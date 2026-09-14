@@ -5,8 +5,8 @@ A long-only, rule-based momentum-rotation strategy trading a $1M mock spot portf
 on the Roostoo exchange, designed around the competition's scoring (return, then
 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar).
 
-**Status (2026-09-14):** Roostoo API client and market-data layer complete and tested. Strategy research,
-backtester and live engine in progress. See [the design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
+**Status (2026-09-14):** Roostoo API client, market-data layer, and competition-faithful backtester complete and
+tested. Strategy research in progress; live engine next. See [the design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
 for the strategy rationale, architecture and decision log.
 
 ## Layout
@@ -16,8 +16,8 @@ src/qtrading/roostoo/   API client — signing, server-clock sync, typed endpoin
 src/qtrading/data/      Binance (crypto) + Yahoo (stock underlyings) history, parquet cache, hourly UTC panel
 data/snapshots/         committed exchangeInfo snapshot the universe is built from
 data/cache/             (git-ignored) parquet price cache — populate with scripts/fetch_history.py
-src/qtrading/strategy/  (planned) pure signal → target-weight functions, shared by backtest and live
-src/qtrading/backtest/  (planned) competition-faithful simulator and rolling-14-day scorer
+src/qtrading/strategy/  pure signal → target-weight functions, shared by backtest and live; baselines
+src/qtrading/backtest/  simulator (Roostoo fees/precision/min-order), rolling-14-day scorer, look-ahead check
 src/qtrading/engine/    (planned) live loop: reconcile, diff, order, log
 tests/                  offline unit tests (pytest)
 scripts/                live checks run by hand
@@ -38,6 +38,7 @@ copy .env.example .env        # then fill in ROOSTOO_API_KEY / ROOSTOO_SECRET_KE
 .venv\Scripts\python.exe -m pytest              # offline unit tests
 .venv\Scripts\python.exe scripts\smoke_public.py  # live check of public endpoints, no keys needed
 .venv\Scripts\python.exe scripts\fetch_history.py # pull ~2y of hourly history into data/cache (re-runs fetch only the tail)
+.venv\Scripts\python.exe scripts\run_backtest.py  # score strategies on rolling 14-day windows (add --oos for the holdout)
 ```
 
 ## Data conventions

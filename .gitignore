@@ -13,3 +13,4 @@ dist/
 # runtime output
 logs/
 data/cache/
+data/results/

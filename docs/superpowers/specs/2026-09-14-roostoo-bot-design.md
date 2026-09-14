@@ -32,8 +32,8 @@ Evidence: a rolling-14-day backtest over Sep 2024 – Sep 2026 on 35 liquid pair
 src/qtrading/
   roostoo/    API client: signing, clock sync, typed endpoints, retry/throttle policy   [done]
   data/       Binance + Yahoo history, parquet cache, hourly UTC panel with stale mask   [done]
-  strategy/   pure functions: universe → signals → target weights                       [to be designed]
-  backtest/   competition-faithful simulator + rolling-window scorer                    [to be designed]
+  strategy/   pure functions: universe → signals → target weights; baselines            [contract done]
+  backtest/   competition-faithful simulator, rolling-window scorer, look-ahead check   [done]
   engine/     live loop: reconcile state, diff targets vs holdings, place orders, log   [to be designed]
 ```
 
@@ -73,9 +73,28 @@ Files: `data/binance.py`, `yahoo.py`, `universe.py`, `store.py`. Tests: `tests/t
 
 Known limitation: a cached range whose latest bar precedes a no-trading period (stock over a weekend) re-requests the empty tail on every refresh. Harmless at our request rates; fix by recording a `fetched_through` timestamp if it ever matters.
 
-## 6. Components to be designed
+## 6. Component: strategy contract + backtester — **done**
 
-Each gets its own section here before implementation: strategy (signal definitions, gate design, parameters and their backtest plateaus), backtester (fee model, precision rounding, min-order, scoring windows), engine (state reconciliation, order idempotency, kill switch via committed config, alerting; `PaperExchange` with the client's interface for keyless dry runs), deployment (EC2, systemd, log rotation).
+Files: `strategy/__init__.py` (contract, `State`, `eligible_mask`), `strategy/baselines.py`, `backtest/simulator.py`, `backtest/metrics.py`, `backtest/checks.py`, `scripts/run_backtest.py`. Tests: `test_simulator.py`, `test_metrics.py`, `test_checks.py`, `test_baselines.py` (20 tests).
+
+**Strategy contract.** Two pure functions: `signals(prices) → DataFrame` (vectorised, causal operations only) and `targets(t, signals_at_t, state) → {pair: weight}`. No I/O, no clocks. The backtester and the live engine call the identical code.
+
+| Decision | Rationale |
+|---|---|
+| Fill at the decision hour's close, slippage configurable (default 0) | Roostoo's ticker shows bid == ask; its mock engine has no spread to model |
+| Fee on notional (taker 0.1% default; maker 0.05% selectable) | Competition rule |
+| Quantity floored to `AmountPrecision`; orders under `MiniOrder` or under a $50 minimum trade notional skipped | Exchange rules from the snapshot; we would never place dust trades |
+| No trades on stale bars | Unknown whether Roostoo fills frozen weekend stock prices; conservative |
+| Sells execute before buys | A full rotation must fit in cash without leverage |
+| Assets with a price at the panel's first bar count as established; later listings need `min_age_h` of history | Avoids listing-day chaos without excluding the whole starting universe |
+| Scoring: daily samples at 00:00 UTC, ratios from daily simple returns (sample std, √365), Calmar = window return / max DD, every 14-day window stepping daily | Judges' sampling is unknown; all are parameters. Un-annualised Calmar because every team is scored on the same 14 days |
+| Composite reported rank-normalised across compared strategies (best = 1, worst = 0) | The judges' normalisation is unknown; we want robustness to it |
+| Holdout: everything after 2026-05-14 hidden unless `--oos` | Out-of-sample check reserved for the final decision |
+| `assert_no_lookahead`: perturb prices after t; signals ≤ t must not change. Runs on every strategy before its numbers are printed | The bug that ruins backtests, caught mechanically |
+
+## 7. Components to be designed
+
+Each gets its own section here before implementation: momentum strategy family (signal definitions, gate design, parameters and their backtest plateaus), engine (state reconciliation, order idempotency, kill switch via committed config, alerting; `PaperExchange` with the client's interface for keyless dry runs), deployment (EC2, systemd, log rotation).
 
 ### Research plan (pre-registered 2026-09-14)
 
@@ -93,14 +112,14 @@ Hypothesis families, tested in this order through one harness with one scoring r
 
 Excluded by design: ML price prediction (insufficient data), LLM sentiment (unverifiable, costs money), RL (overfits regimes), anything arbitrage-like (banned).
 
-## 7. Non-goals for v1
+## 8. Non-goals for v1
 
 Limit orders; tokenized stocks (need a second data source and non-trading-hours logic); a second bot; any LLM or RL component; any arbitrage-like behaviour (banned).
 
-## 8. Testing approach
+## 9. Testing approach
 
 TDD throughout. Unit tests are offline and deterministic (fake transport, fake clocks). Live checks are scripts under `scripts/` run by hand: `smoke_public.py` (no keys) now; a signed smoke test once competition keys exist. Before go-live: replay the backtester over the dry-run window and confirm it reproduces the live bot's decisions.
 
-## 9. Open questions (Sep 18 workshop)
+## 10. Open questions (Sep 18 workshop)
 
 Ratio sampling frequency, annualisation and cross-team normalisation · definition of an "active trading day" · limit-order fill model · rate limits per endpoint · portfolio valuation price and final snapshot time · weekend price source for tokenized stocks · whether "1x short" exists · multi-bot capital and ranking rules.
