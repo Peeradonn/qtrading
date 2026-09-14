@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qtrading"
+version = "0.1.0"
+description = "Momentum-rotation trading bot for the Roostoo mock exchange (HK/AU/IN Quant Trading Hackathon 2026)"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
