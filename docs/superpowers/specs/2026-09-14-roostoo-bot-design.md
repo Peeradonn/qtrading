@@ -31,7 +31,7 @@ Evidence: a rolling-14-day backtest over Sep 2024 – Sep 2026 on 35 liquid pair
 ```
 src/qtrading/
   roostoo/    API client: signing, clock sync, typed endpoints, retry/throttle policy   [done]
-  data/       Binance klines fetch + cache; Roostoo price logger                        [to be designed]
+  data/       Binance + Yahoo history, parquet cache, hourly UTC panel with stale mask   [done]
   strategy/   pure functions: universe → signals → target weights                       [to be designed]
   backtest/   competition-faithful simulator + rolling-window scorer                    [to be designed]
   engine/     live loop: reconcile state, diff targets vs holdings, place orders, log   [to be designed]
@@ -57,18 +57,50 @@ Decisions:
 
 Deferred: automatic resync-and-retry on a timestamp-rejection error (need the real error message first); per-endpoint rate limits (ask at the Sep 18 workshop).
 
-## 5. Components to be designed
+## 5. Component: data layer — **done**
 
-Each gets its own section here before implementation: data layer, strategy (signal definitions, gate design, parameters and their backtest plateaus), backtester (fee model, precision rounding, min-order, scoring windows), engine (state reconciliation, order idempotency, kill switch via committed config, alerting), deployment (EC2, systemd, log rotation).
+Files: `data/binance.py`, `yahoo.py`, `universe.py`, `store.py`. Tests: `tests/test_binance.py`, `test_yahoo.py`, `test_universe.py`, `test_store.py` (14 tests, fake HTTP / fake download / fake sources, `tmp_path` cache).
 
-## 6. Non-goals for v1
+| Decision | Rationale |
+|---|---|
+| **Bars are indexed by close time** — the moment the close became known — everywhere | Look-ahead becomes impossible by construction: at time T anything with index ≤ T is usable |
+| Grid rule: hour T holds the last bar closing in (T−1h, T]; a stock bar closing at :30 appears at the *next* hour | Conservative by design; tested explicitly |
+| Hours with no closing bar carry the last close forward and are flagged in a `stale` mask | Signals must not mistake a frozen weekend stock price for a flat market; the mask lets them treat it correctly |
+| Crypto from Binance public spot klines (`data-api.binance.vision`), no key; funding rates from the futures API as a positioning signal | Exchange prices, deep history, covers the whole Roostoo list. Yahoo's crypto is aggregated and patchy (no WLFI; PEPE under `PEPE24478-USD`) |
+| Stock underlyings from `yfinance` (free, unofficial); mapping table `STOCK_UNDERLYING` in `universe.py`; unverified entries flagged | The only free hourly source for equities; 730-day cap on hourly data. Throttles unpredictably → everything cached |
+| Universe built from a **committed** `exchangeInfo` snapshot (`data/snapshots/`) using the `AssetType` field; `CanTrade=false` and unmapped stocks excluded | Research is reproducible even if Roostoo relists pairs |
+| Per-symbol parquet cache with incremental head/tail fetches; only the missing range is requested | Re-runs are cheap; the live bot refreshes one hour per asset per cycle |
+
+Known limitation: a cached range whose latest bar precedes a no-trading period (stock over a weekend) re-requests the empty tail on every refresh. Harmless at our request rates; fix by recording a `fetched_through` timestamp if it ever matters.
+
+## 6. Components to be designed
+
+Each gets its own section here before implementation: strategy (signal definitions, gate design, parameters and their backtest plateaus), backtester (fee model, precision rounding, min-order, scoring windows), engine (state reconciliation, order idempotency, kill switch via committed config, alerting; `PaperExchange` with the client's interface for keyless dry runs), deployment (EC2, systemd, log rotation).
+
+### Research plan (pre-registered 2026-09-14)
+
+Hypothesis families, tested in this order through one harness with one scoring rule (median composite, 10th-percentile 14-day return, turnover), preferring parameter plateaus over peaks. Research stops ~Sep 23 regardless.
+
+1. Multi-horizon volatility-adjusted momentum ensemble, skipping the most recent 12–24 h
+2. Slow, banded regime filter (the naive 7-day BTC gate whipsawed in the spike)
+3. Inverse-volatility weights, portfolio volatility target, drawdown brake
+4. Residual momentum: alt returns net of BTC beta
+5. Funding-rate crowding filter (Binance futures; full history available, unlike open interest)
+6. Volume-confirmed momentum
+7. Stocks and gold in the universe with their own momentum scores
+8. Pullback entries within uptrends
+9. Intraday seasonality — expected to fail after fees; test cheaply and discard
+
+Excluded by design: ML price prediction (insufficient data), LLM sentiment (unverifiable, costs money), RL (overfits regimes), anything arbitrage-like (banned).
+
+## 7. Non-goals for v1
 
 Limit orders; tokenized stocks (need a second data source and non-trading-hours logic); a second bot; any LLM or RL component; any arbitrage-like behaviour (banned).
 
-## 7. Testing approach
+## 8. Testing approach
 
 TDD throughout. Unit tests are offline and deterministic (fake transport, fake clocks). Live checks are scripts under `scripts/` run by hand: `smoke_public.py` (no keys) now; a signed smoke test once competition keys exist. Before go-live: replay the backtester over the dry-run window and confirm it reproduces the live bot's decisions.
 
-## 8. Open questions (Sep 18 workshop)
+## 9. Open questions (Sep 18 workshop)
 
 Ratio sampling frequency, annualisation and cross-team normalisation · definition of an "active trading day" · limit-order fill model · rate limits per endpoint · portfolio valuation price and final snapshot time · weekend price source for tokenized stocks · whether "1x short" exists · multi-bot capital and ranking rules.
