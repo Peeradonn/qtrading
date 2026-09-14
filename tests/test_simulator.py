@@ -155,6 +155,15 @@ def test_state_memory_persists_across_decisions():
     assert [t.time for t in res.trades if t.side == "BUY"] == [ts(2)]   # (the 4th decision then sells it)
 
 
+def test_equal_sized_orders_are_processed_in_a_deterministic_order():
+    # Six equal buys: with a hash-ordered set the fill order (and hence which one is cash-constrained last)
+    # would vary between Python processes. Pairs must be processed in sorted order.
+    pairs = ["F/USD", "B/USD", "E/USD", "A/USD", "D/USD", "C/USD"]
+    prices = panel({p: [3.0, 3.0] for p in pairs})
+    res = run(prices, FixedTargets({0: {p: 1 / 6 for p in pairs}}), initial_cash=1000.0, min_trade_notional=0.0)
+    assert [t.pair for t in res.trades] == sorted(pairs)
+
+
 def test_turnover_is_notional_traded_over_equity():
     prices = panel({"A/USD": [3.0, 3.0]})
     res = run(prices, FixedTargets({0: {"A/USD": 0.5}}), initial_cash=1000.0, fee_rate=0.0, min_trade_notional=0.0)

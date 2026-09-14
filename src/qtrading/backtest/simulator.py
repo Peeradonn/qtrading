@@ -85,7 +85,9 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
             targets = strategy.targets(t, SIG.iloc[i], state) or {}
 
             orders = []
-            for p in set(targets) | {p for p, j in col.items() if qty[j] > 0}:
+            # sorted: a set's iteration order varies per process, and with equal-sized orders the fill order
+            # decides which one is cash-constrained — results must not depend on PYTHONHASHSEED
+            for p in sorted(set(targets) | {p for p, j in col.items() if qty[j] > 0}):
                 j = col.get(p)
                 if j is None or np.isnan(px[j]) or S[i, j]:
                     continue
