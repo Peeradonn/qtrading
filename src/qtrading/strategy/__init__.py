@@ -4,7 +4,7 @@ backtester and the live engine run the identical code.
   signals(prices)                 -> DataFrame (hourly grid × pair) computed with causal operations only
   targets(t, signals_at_t, state) -> {pair: weight}  the decision at one time step; weights sum to <= 1
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -19,7 +19,8 @@ class State:
     weights: dict[str, float]     # pair -> fraction of equity currently held
     cash: float
     equity: float
-    peak_equity: float            # highest equity seen at a decision time (for drawdown rules)
+    peak_equity: float            # highest equity seen at a decision time (engine-observed)
+    memory: dict = field(default_factory=dict)   # strategy-owned scratch, carried unchanged between decisions
 
 
 class Strategy(Protocol):

@@ -56,7 +56,7 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
     col = {p: j for j, p in enumerate(pairs)}
     C = close.to_numpy(dtype=float)
     S = prices.stale.to_numpy(dtype=bool)
-    SIG = strategy.signals(prices).reindex(index=close.index, columns=pairs)
+    SIG = strategy.signals(prices).reindex(index=close.index)     # keep any extra columns (gates, vols) for targets()
     n = len(close)
     slip = config.slippage_bps / 10_000
 
@@ -69,6 +69,7 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
     holdings_out = np.empty((n, len(pairs)))
     weights_out = np.empty((n, len(pairs)))
     trades: list[Trade] = []
+    memory: dict = {}                                   # the strategy's scratch, carried between decisions
 
     for i in range(n):
         t = close.index[i]
@@ -80,7 +81,7 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
             peak = max(peak, equity)
             state = State(holdings={p: qty[j] for p, j in col.items() if qty[j] > 0},
                           weights={p: value[j] / equity for p, j in col.items() if qty[j] > 0},
-                          cash=cash, equity=equity, peak_equity=peak)
+                          cash=cash, equity=equity, peak_equity=peak, memory=memory)
             targets = strategy.targets(t, SIG.iloc[i], state) or {}
 
             orders = []

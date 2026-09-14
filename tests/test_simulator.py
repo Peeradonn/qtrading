@@ -118,6 +118,43 @@ def test_decisions_happen_only_every_n_hours():
     assert [t.time for t in res.trades] == [ts(0), ts(2), ts(4)]
 
 
+class GateReader:
+    """Test double: buys only if its own extra '_gate' signal column reaches targets()."""
+    name = "gate-reader"
+
+    def signals(self, prices):
+        sig = pd.DataFrame(0.0, index=prices.close.index, columns=prices.close.columns)
+        sig["_gate"] = 1.0
+        return sig
+
+    def targets(self, t, s, state):
+        return {"A/USD": 0.5} if "_gate" in s.index and s["_gate"] > 0 else {}
+
+
+def test_extra_signal_columns_are_passed_through_to_targets():
+    prices = panel({"A/USD": [3.0, 3.0]})
+    res = run(prices, GateReader(), initial_cash=1000.0, min_trade_notional=0.0)
+    assert len(res.trades) == 1
+
+
+class Counter:
+    """Test double: counts decisions in state.memory and buys only on the third one."""
+    name = "counter"
+
+    def signals(self, prices):
+        return pd.DataFrame(0.0, index=prices.close.index, columns=prices.close.columns)
+
+    def targets(self, t, s, state):
+        state.memory["n"] = state.memory.get("n", 0) + 1
+        return {"A/USD": 0.5} if state.memory["n"] == 3 else {}
+
+
+def test_state_memory_persists_across_decisions():
+    prices = panel({"A/USD": [3.0] * 4})
+    res = run(prices, Counter(), initial_cash=1000.0, min_trade_notional=0.0)
+    assert [t.time for t in res.trades if t.side == "BUY"] == [ts(2)]   # (the 4th decision then sells it)
+
+
 def test_turnover_is_notional_traded_over_equity():
     prices = panel({"A/USD": [3.0, 3.0]})
     res = run(prices, FixedTargets({0: {"A/USD": 0.5}}), initial_cash=1000.0, fee_rate=0.0, min_trade_notional=0.0)

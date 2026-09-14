@@ -49,6 +49,17 @@ def test_calmar_is_nan_when_there_is_no_drawdown():
     assert math.isnan(w.iloc[0]["calmar"])
 
 
+def test_a_flat_window_ranks_between_a_losing_and_a_winning_one():
+    idx = pd.to_datetime(["2026-09-01"], utc=True)
+    winner = pd.DataFrame({"sortino": [2.0], "sharpe": [1.5], "calmar": [0.8]}, index=idx)
+    flat = pd.DataFrame({"sortino": [math.nan], "sharpe": [math.nan], "calmar": [math.nan]}, index=idx)
+    loser = pd.DataFrame({"sortino": [-1.0], "sharpe": [-0.5], "calmar": [-0.4]}, index=idx)
+    comp = rank_composite({"win": winner, "flat": flat, "lose": loser})
+    assert comp["win"] == pytest.approx(1.0)
+    assert comp["flat"] == pytest.approx(0.5)
+    assert comp["lose"] == pytest.approx(0.0)
+
+
 def test_rank_composite_gives_the_dominant_strategy_one_and_the_dominated_zero():
     idx = pd.to_datetime(["2026-09-01", "2026-09-02"], utc=True)
     a = pd.DataFrame({"sortino": [2.0, 3.0], "sharpe": [1.5, 2.5], "calmar": [0.8, 0.9]}, index=idx)

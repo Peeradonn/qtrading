@@ -37,15 +37,15 @@ def window_metrics(equity: pd.Series, window_days: int = 14, sample_hour: int = 
 def rank_composite(windows_by_strategy: dict[str, pd.DataFrame]) -> pd.Series:
     """Judges' composite with each ratio rank-normalised across the compared strategies per window
     (best = 1, worst = 0), then the median over windows. Robust to whatever normalisation the judges use.
-    NaN Calmar (no drawdown) ranks best; NaN Sharpe/Sortino (flat) ranks as zero."""
+    Undefined ratios (a flat window: zero return, zero vol, zero drawdown) count as 0 — between losing and
+    winning — so that doing nothing cannot top the table."""
     names = list(windows_by_strategy)
     common = None
     for w in windows_by_strategy.values():
         common = w.index if common is None else common.intersection(w.index)
     scores = pd.Series(0.0, index=names)
     for metric, weight in COMPOSITE_WEIGHTS.items():
-        table = pd.DataFrame({n: windows_by_strategy[n].loc[common, metric] for n in names})
-        table = table.fillna(np.inf) if metric == "calmar" else table.fillna(0.0)
+        table = pd.DataFrame({n: windows_by_strategy[n].loc[common, metric] for n in names}).fillna(0.0)
         ranks = table.rank(axis=1, method="average")
         norm = (ranks - 1) / max(len(names) - 1, 1)
         scores += weight * norm.median()
