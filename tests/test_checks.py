@@ -42,3 +42,24 @@ def test_causal_strategy_passes():
 def test_leaky_strategy_is_caught():
     with pytest.raises(AssertionError, match="look-ahead"):
         assert_no_lookahead(LeakyMomentum(), random_panel(), at=100)
+
+
+class CausalVolumeUser:
+    """Causal, but reads prices.volume and prices.extra — the checker must carry both into the perturbed pass."""
+    name = "causal-volume"
+
+    def signals(self, prices):
+        s = prices.close.pct_change(24) * prices.volume.rolling(24).mean()
+        return s + prices.extra["funding"].rolling(8).mean()
+
+    def targets(self, t, s, state):
+        return {}
+
+
+def test_checker_keeps_volume_and_extra_panels_in_the_perturbed_pass():
+    prices = random_panel()
+    rng = np.random.default_rng(1)
+    prices.volume = pd.DataFrame(rng.uniform(1, 2, prices.close.shape), index=prices.close.index, columns=prices.close.columns)
+    prices.extra["funding"] = pd.DataFrame(rng.normal(0, 1e-4, prices.close.shape), index=prices.close.index,
+                                           columns=prices.close.columns)
+    assert_no_lookahead(CausalVolumeUser(), prices, at=100)

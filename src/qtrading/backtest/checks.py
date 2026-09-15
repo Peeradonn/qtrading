@@ -12,7 +12,7 @@ def assert_no_lookahead(strategy: Strategy, prices: Prices, at: int, seed: int =
     close = prices.close.copy()
     future = close.iloc[at + 1:]
     close.iloc[at + 1:] = future.to_numpy() * np.exp(rng.normal(0.0, scale, size=future.shape))
-    perturbed = strategy.signals(Prices(close=close, stale=prices.stale))
+    perturbed = strategy.signals(Prices(close=close, stale=prices.stale, volume=prices.volume, extra=prices.extra))
     a = base.iloc[:at + 1].to_numpy(dtype=float)
     b = perturbed.iloc[:at + 1].to_numpy(dtype=float)
     if not np.allclose(a, b, equal_nan=True):
