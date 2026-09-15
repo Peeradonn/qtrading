@@ -14,17 +14,22 @@ Trade a $1M mock spot portfolio autonomously on Roostoo for 14 days. Judging is 
 
 Design consequences: max drawdown is the most valuable number to control (Calmar); positive skew is rewarded (Sortino); turnover must be budgeted (0.1% taker / 0.05% maker per fill); the bot must never trade blind or double-order; every decision must be logged and attributable to a commit.
 
-## 2. Strategy summary (approved; details to be designed in §5)
+## 2. Strategy summary — **locked 2026-09-16** (the "core")
 
-Long-only **dual momentum rotation** over Roostoo's liquid universe (crypto, PAXG, later tokenized stocks):
+Long-only momentum rotation over the 35 most liquid crypto pairs on Roostoo plus PAXG:
 
-- Cross-sectional ranking by multi-horizon, volatility-adjusted momentum; hold top *K* (≈6).
-- Absolute-momentum and market-regime gate → cash when trends are absent. Spike evidence (2026-09-14) showed a naive 7-day BTC gate whipsaws; the filter must be slower and banded.
-- Inverse-volatility weights; portfolio volatility target ≈ 3%/day; drawdown brake.
-- Hysteresis: hold while rank ≤ 2K. Spike showed this halves turnover at no cost.
-- Hourly decisions, market orders in v1; limit orders with fallback in v1.5.
+- **Signal, hourly:** for each asset, the return over 3, 7 and 14 days (ignoring the most recent 12 hours), each divided by the asset's realised volatility; averaged. Volatility is measured on live bars only.
+- **Selection, once a day at 00:00 UTC:** rank by score, hold the top 6; a holding stays while it remains in the top 12 (hysteresis).
+- **Weights:** inverse volatility.
+- **Exposure:** scaled so estimated portfolio volatility is 2% per day (constant-correlation model); the remainder is cash. This rule does the drawdown control.
+- **Hourly:** re-check volatility and exposure; trade a holding only if it has drifted more than 5 points from target.
+- **Off, by evidence:** regime gates, drawdown brake, residual momentum, volume confirmation, funding filter, multi-hour selection, tokenized stocks (pending the workshop answer on their weekend pricing).
 
-Evidence: a rolling-14-day backtest over Sep 2024 – Sep 2026 on 35 liquid pairs rejected a "buy the losers" alternative (−80% over the sample, −92% max drawdown) and confirmed momentum as the only long-only approach with positive expectancy and the right skew.
+Twins for a possible second bot, same engine and signal: **conservative** (1.5% vol target) and **risk-on** (equal weights, no vol target).
+
+In-sample (Sep 2024 – May 2026, ~43 independent fortnights) versus BTC buy-and-hold: median fortnight +0.88% vs +0.80%; 10th-percentile fortnight −6.4% vs −9.1%; worst fortnight −16% vs −30%; beats BTC in 56% of fortnights; Sharpe 0.89 vs 0.72; Sortino 1.47 vs 1.17; total +108% vs +32%; max drawdown −32% vs −50%; fees ≈ 0.3% per fortnight. **Robust across selection hours:** tails and total. **Not robust:** the better-than-BTC median and Sharpe hold only at 00:00 and 12:00 UTC — the in-sample edge is partly hour luck; 00:00 is kept as the a-priori daily-close convention. Out-of-sample check on the sealed holdout (2026-05-15 → 09-14): see research log.
+
+Evidence trail: the spike (2026-09-14) rejected a "buy the losers" alternative (−80% over the sample, −92% max drawdown); runs 1–6 (§7) built the core one decision at a time.
 
 ## 3. Architecture
 
@@ -117,7 +122,10 @@ File: `strategy/momentum.py` — one class, `Momentum`, driven by `MomentumParam
 | 1 | 09-15 | Gross edge strong (+175% gross) but hourly re-selection paid 85% of capital in fees; drawdown brake without reset went flat forever; rank composite gameable by a flat strategy |
 | 2 | 09-15 | Daily selection + dropping the 24h horizon: +188% net, BTC-like ratios, beats BTC in 50% of windows. Gates cost 70–80% of return. Vol targeting did the Screen 3 work |
 | 3 | 09-15 | **Core locked:** inverse-vol, 2%/day vol target, daily selection, 3/7/14-day horizons — dominates BTC on every metric in-sample (medR +0.88% vs +0.80%, worst −16% vs −30%, beats BTC 56%, Sharpe 0.89 vs 0.72, maxDD −32% vs −50%). Lower vol target → higher return and smaller tails. Own gate dead. K 6≈8. Simulator tie-break non-determinism found and fixed (±10 pts of total return is noise) |
-| 4 | 09-15 | Plateau check and families 4–7 as additions — results to be recorded |
+| 4 | 09-15 | Vol-target plateau 1.5–2.0% (2.5% falls off); K=6 > 8. Residual momentum (½) and volume confirmation each lifted Sharpe/Sortino ~0.15 with return and tails unchanged; funding filter at 0.05%/8h never triggered; stocks improved ratios vs a same-hour control but selecting at 15:00 UTC hurt the crypto book. Active days p10 = 7 → engine needs an activity floor |
+| 5 | 09-15 | Residual + volume **together** worse than either alone and than the core → both noise, excluded. Funding filter flips sign between 0.02% and 0.03% → noise, excluded. **Hour sweep:** tails and total robust across all six selection hours (worst −15…−17%, maxDD −32…−35%, total +61…+111%); median/Sharpe above BTC only at 00 and 12 UTC |
+| 6 | 09-16 | Overlapping selection tranches (0+12, 6+18, 3-a-day) average the hours' results and add 2–4 points of fees — no gain. Single daily selection at 00:00 UTC kept. **Core locked.** |
+| OOS | 09-16 | One look at the sealed holdout (windows from 2026-05-15): pre-committed pass rule — worst fortnight and max drawdown smaller than BTC's, beats BTC in ≥ 45% of windows. Result: to be recorded |
 
 ## 8. Components to be designed
 

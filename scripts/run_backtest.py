@@ -115,8 +115,7 @@ def main() -> int:
         cutoff = pd.Timestamp(args.report_from, tz="UTC")
         windows = {n: w[w.index >= cutoff] for n, w in windows.items()}
         active = {n: a[a.index >= cutoff] for n, a in active.items()}
-        print(f"
-scoring {len(next(iter(windows.values())))} windows starting on/after {cutoff:%Y-%m-%d}")
+        print(f"\nscoring {len(next(iter(windows.values())))} windows starting on/after {cutoff:%Y-%m-%d}")
     bench = windows["hold:BTC/USD"]["ret"]
     beats = {}
     print(f"\n{'strategy':20} {'medR':>7} {'p10R':>7} {'p90R':>7} {'worstR':>7} {'%R>0':>5} {'%>BTC':>5} | "
