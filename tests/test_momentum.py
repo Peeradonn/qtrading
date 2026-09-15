@@ -47,7 +47,7 @@ def test_composite_is_the_mean_of_vol_adjusted_horizon_returns():
     strat = Momentum(MomentumParams(lookbacks_h=(1, 2), skip_h=0, vol_window_h=3, min_age_h=0, gate_ma_h=2))
     score = strat.signals(prices)[("score", "A/USD")]
     assert score.iloc[4] == pytest.approx(0.09737, rel=1e-3)
-    assert math.isnan(score.iloc[2])                       # 2-hour lookback + 3-bar vol not yet available
+    assert math.isnan(score.iloc[1])                       # 2-hour lookback not yet available
 
 
 # skip 1 hour, lookback 2 at t=4: r = close[3]/close[1]-1 = 104/102-1 = 0.019608 -> 0.019608/(0.022530*sqrt(2)) = 0.61539
@@ -166,3 +166,77 @@ def test_drift_band_keeps_a_holding_within_band_of_target():
     t = strat.targets(ts(0), sig_row({"A": 2.0, "B": 1.0}),
                       state(holdings={"A": 1.0, "B": 1.0}, weights={"A": 0.48, "B": 0.40}))
     assert t == {"A": pytest.approx(0.48), "B": pytest.approx(0.5)}
+
+
+# --- families 4-7: residual momentum, funding crowding, volume confirmation, stocks & gold -------------
+
+def panel2(closes, stale=None, volume=None, extra=None):
+    n = len(next(iter(closes.values())))
+    idx = pd.DatetimeIndex([ts(h) for h in range(n)], name="time")
+    close = pd.DataFrame(closes, index=idx, dtype=float)
+    st = pd.DataFrame(stale or {p: [False] * n for p in closes}, index=idx, dtype=bool)
+    vol = None if volume is None else pd.DataFrame(volume, index=idx, dtype=float)
+    return Prices(close=close, stale=st, volume=vol, extra=extra or {})
+
+
+LONG = dict(lookbacks_h=(168,), skip_h=0, vol_window_h=168, min_age_h=0, gate_ma_h=2)
+
+
+# live closes 100 -> 110 -> 99 -> 105 with a stale hour after each; live log returns .09531, -.10536, .05884
+# -> sample std 0.10690. A naive rolling std over all 6 hourly returns (three of them zero) would be 0.0797.
+def test_vol_is_measured_on_live_bars_only():
+    prices = panel2({"A/USD": [100, 100, 110, 110, 99, 99, 105]},
+                    stale={"A/USD": [False, True, False, True, False, True, False]})
+    strat = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=6, min_age_h=0))
+    assert strat.signals(prices)[("vol", "A/USD")].iloc[6] == pytest.approx(0.10690, rel=1e-3)
+
+
+def test_selection_at_a_fixed_utc_hour_and_on_the_first_call():
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, select_hour_utc=15))
+    mem = {}
+    assert set(strat.targets(ts(3), sig_row({"A": 3.0, "B": 2.0, "C": 1.0}), state(memory=mem))) == {"A", "B"}
+    held = state(holdings={"A": 1.0, "B": 1.0}, weights={"A": 0.5, "B": 0.5}, memory=mem)
+    assert set(strat.targets(ts(4), sig_row({"A": 0.1, "B": 0.2, "C": 9.0}), held)) == {"A", "B"}      # not 15:00 yet
+    assert set(strat.targets(ts(15), sig_row({"A": 0.1, "B": 0.2, "C": 9.0}), held)) == {"B", "C"}     # B rank 2 kept
+    held2 = state(holdings={"B": 1.0, "C": 1.0}, weights={"B": 0.5, "C": 0.5}, memory=mem)
+    assert set(strat.targets(ts(16), sig_row({"A": 9.0, "B": 0.2, "C": 0.1}), held2)) == {"B", "C"}    # held to next 15:00
+
+
+def test_residual_momentum_removes_the_market_component_and_keeps_idiosyncratic_trend():
+    rng = np.random.default_rng(1)
+    n = 800
+    r_btc, r_idio = rng.normal(0.001, 0.01, n), rng.normal(0.001, 0.01, n)
+    prices = panel2({"BTC/USD": 100 * np.exp(np.cumsum(r_btc)),
+                     "TWIN/USD": 100 * np.exp(np.cumsum(2 * r_btc)),      # a pure beta-2 clone of BTC
+                     "IDIO/USD": 100 * np.exp(np.cumsum(r_idio))})        # its own trend, unrelated to BTC
+    raw = Momentum(MomentumParams(**LONG)).signals(prices)
+    res = Momentum(MomentumParams(residual_weight=1.0, beta_window_h=336, **LONG)).signals(prices)
+    twin_raw, twin_res = raw[("score", "TWIN/USD")].iloc[-1], res[("score", "TWIN/USD")].iloc[-1]
+    assert abs(twin_raw) > 0.5                                             # the clone trends (with BTC)
+    assert abs(twin_res) < 0.2 * abs(twin_raw)                             # ...but has no trend of its own
+    idio_raw, idio_res = raw[("score", "IDIO/USD")].iloc[-1], res[("score", "IDIO/USD")].iloc[-1]
+    assert idio_res == pytest.approx(idio_raw, rel=0.5)                    # idiosyncratic trend survives
+    assert res[("score", "BTC/USD")].iloc[-1] == pytest.approx(raw[("score", "BTC/USD")].iloc[-1])   # market: raw
+
+
+def test_volume_confirmation_favours_rising_volume_on_identical_price_paths():
+    rng = np.random.default_rng(2)
+    n = 800
+    px = 100 * np.exp(np.cumsum(rng.normal(0.002, 0.005, n)))           # a clear uptrend
+    prices = panel2({"A/USD": px, "B/USD": px},
+                    volume={"A/USD": np.linspace(1, 3, n), "B/USD": np.linspace(3, 1, n)})
+    off = Momentum(MomentumParams(**LONG)).signals(prices)
+    on = Momentum(MomentumParams(volume_confirm=True, volume_short_h=168, volume_long_h=720, **LONG)).signals(prices)
+    assert off[("score", "A/USD")].iloc[-1] == off[("score", "B/USD")].iloc[-1]
+    assert on[("score", "A/USD")].iloc[-1] > on[("score", "B/USD")].iloc[-1] > 0
+
+
+def test_funding_filter_drops_crowded_assets_from_the_score():
+    n = 400
+    idx = pd.DatetimeIndex([ts(h) for h in range(n)], name="time")
+    funding = pd.DataFrame({"A/USD": 0.001, "B/USD": 0.0001}, index=idx)   # A: 0.1% per 8h — crowded longs
+    prices = panel2({"A/USD": [100 + i for i in range(n)], "B/USD": [100 + i for i in range(n)]},
+                    extra={"funding": funding})
+    sig = Momentum(MomentumParams(funding_max=0.0005, funding_window_h=72, **LONG)).signals(prices)
+    assert math.isnan(sig[("score", "A/USD")].iloc[-1])
+    assert sig[("score", "B/USD")].iloc[-1] > 0

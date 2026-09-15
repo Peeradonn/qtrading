@@ -1,8 +1,10 @@
 """Long-only dual-momentum rotation. Every hypothesis in the research plan is a MomentumParams config.
 
-signals: per asset, the mean over lookbacks of (return over L hours, skipping the latest skip_h) / (hourly vol · √L);
-         plus each asset's hourly vol and a banded market-regime gate. Causal operations only.
-targets: eligibility → gate → hysteresis → weights → exposure (vol target, drawdown brake) → drift band.
+signals: per asset, the mean over lookbacks of (return over L hours, skipping the latest skip_h) / (hourly vol * sqrt(L));
+         optionally blended with the residual (BTC-beta-neutral) version, scaled by a volume-confirmation multiplier,
+         and masked where perpetual funding says the trade is crowded. Plus each asset's vol and a banded market gate.
+         Causal operations only.
+targets: eligibility -> gate -> hysteresis -> weights -> exposure (vol target, drawdown brake) -> drift band.
 """
 from dataclasses import dataclass
 
@@ -25,22 +27,31 @@ class MomentumParams:
     k: int = 6
     buffer_rank: int = 12                       # keep a holding while it ranks at or above this
     select_every_h: int = 1                     # re-rank/re-select this often; risk rules still run every decision
+    select_hour_utc: int | None = None          # ...or at this UTC hour each day (overrides select_every_h)
     weighting: str = "equal"                    # "equal" | "inverse_vol"
     gate: str = "none"                          # "none" | "own" | "market" | "both"
-    gate_pair: str = "BTC/USD"
+    gate_pair: str = "BTC/USD"                  # the market proxy: gate and residual beta are measured against it
     gate_ma_h: int = 480                        # 20-day moving average
     gate_band: float = 0.02                     # hysteresis band around the MA
+    residual_weight: float = 0.0                # 0 = raw momentum; 1 = fully BTC-beta-neutral residual momentum
+    beta_window_h: int = 720
+    volume_confirm: bool = False                # scale score by short/long dollar-volume ratio (clipped)
+    volume_short_h: int = 168
+    volume_long_h: int = 720
+    volume_clip: tuple[float, float] = (0.5, 1.5)
+    funding_max: float | None = None            # drop assets whose mean funding over funding_window_h exceeds this
+    funding_window_h: int = 72
     vol_target_daily: float | None = None       # e.g. 0.03; None = no scaling
     avg_corr: float = 0.7                       # constant-correlation model for portfolio vol
     dd_halve: float | None = None               # drawdown from peak at which exposure halves
     dd_flat: float | None = None                # drawdown from peak at which we go to cash
     dd_cooldown_h: int = 48                     # stay flat this long, then reset the peak and resume
-    drift_band: float = 0.05                    # don't touch a holding within this of its target
+    drift_band: float = 0.05                    # do not touch a holding within this of its target
     max_exposure: float = 1.0
 
 
 def market_gate(close: pd.Series, ma_h: int, band: float) -> pd.Series:
-    """1 = risk on, 0 = risk off. Turns on above MA·(1+band), off below MA·(1−band), holds in between.
+    """1 = risk on, 0 = risk off. Turns on above MA*(1+band), off below MA*(1-band), holds in between.
     Off while the MA is warming up."""
     ma = close.rolling(ma_h).mean()
     up = close > ma * (1 + band)
@@ -61,7 +72,9 @@ class Momentum:
             bits.append(f"vt{p.vol_target_daily:g}")
         if p.dd_halve or p.dd_flat:
             bits.append(f"dd{p.dd_halve:g}/{p.dd_flat:g}")
-        if p.select_every_h != 1:
+        if p.select_hour_utc is not None:
+            bits.append(f"h{p.select_hour_utc}")
+        elif p.select_every_h != 1:
             bits.append(f"s{p.select_every_h}")
         return ":".join(bits)
 
@@ -73,12 +86,40 @@ class Momentum:
         cols = [c for c in all_pairs if p.pairs is None or c in p.pairs]
         close = prices.close[cols]
 
-        vol = np.log(close).diff().rolling(p.vol_window_h).std()
-        horizon_scores = []
-        for L in p.lookbacks_h:
-            ret = close.shift(p.skip_h) / close.shift(p.skip_h + L) - 1
-            horizon_scores.append(ret / (vol * np.sqrt(L)))
-        composite = sum(horizon_scores) / len(horizon_scores)
+        # hourly log returns on live bars only: a carried-forward price is not a zero-return observation
+        logret = np.log(close).diff().where(~prices.stale[cols])
+        # min_periods: a stock has only ~35 live returns in a 168h window (7 bars x 5 days), so require W/6
+        vol = logret.rolling(p.vol_window_h, min_periods=max(2, p.vol_window_h // 6)).std()
+
+        raw = self._horizon_mean(lambda L: close.shift(p.skip_h) / close.shift(p.skip_h + L) - 1, vol)
+        composite = raw
+        if p.residual_weight > 0:
+            if p.gate_pair not in cols:
+                raise ValueError(f"residual momentum needs {p.gate_pair!r} in the universe")
+            mkt = logret[p.gate_pair]
+            w = max(24, p.beta_window_h // 4)
+            beta = logret.rolling(p.beta_window_h, min_periods=w).cov(mkt).div(
+                mkt.rolling(p.beta_window_h, min_periods=w).var(), axis=0)
+            log_close = np.log(close)
+
+            def residual_return(L):
+                r = log_close.shift(p.skip_h) - log_close.shift(p.skip_h + L)
+                return r.sub(beta.mul(r[p.gate_pair], axis=0))
+
+            residual = self._horizon_mean(residual_return, vol)
+            composite = (1 - p.residual_weight) * raw + p.residual_weight * residual
+            composite[p.gate_pair] = raw[p.gate_pair]                      # the market itself keeps its raw score
+
+        if p.volume_confirm and prices.volume is not None:
+            dv = prices.volume[cols]
+            ratio = dv.rolling(p.volume_short_h, min_periods=1).mean() / dv.rolling(p.volume_long_h, min_periods=1).mean()
+            composite = composite * ratio.clip(*p.volume_clip).fillna(1.0)
+
+        if p.funding_max is not None and "funding" in prices.extra:
+            funding = prices.extra["funding"].reindex(index=close.index, columns=cols)
+            crowded = funding.rolling(p.funding_window_h, min_periods=1).mean() > p.funding_max
+            composite = composite.mask(crowded)
+
         composite = composite.replace([np.inf, -np.inf], np.nan)
         composite = composite.where(eligible_mask(prices, p.min_age_h)[cols])
 
@@ -90,6 +131,10 @@ class Momentum:
         else:
             out[("gate", "MARKET")] = 1.0
         return out
+
+    def _horizon_mean(self, return_over, vol: pd.DataFrame) -> pd.DataFrame:
+        scores = [return_over(L) / (vol * np.sqrt(L)) for L in self.params.lookbacks_h]
+        return sum(scores) / len(scores)
 
     # ---- targets ------------------------------------------------------------
 
@@ -116,7 +161,11 @@ class Momentum:
 
         # --- selection: slow cadence ----------------------------------------
         last = mem.get("last_select")
-        if last is None or t - last >= pd.Timedelta(hours=p.select_every_h):
+        if p.select_hour_utc is not None:
+            due = last is None or (t.hour == p.select_hour_utc and t - last >= pd.Timedelta(hours=1))
+        else:
+            due = last is None or t - last >= pd.Timedelta(hours=p.select_every_h)
+        if due:
             chosen = self._select(s, state)
             mem["selected"], mem["last_select"] = chosen, t
         else:

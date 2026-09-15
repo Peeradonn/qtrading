@@ -67,3 +67,19 @@ def test_rank_composite_gives_the_dominant_strategy_one_and_the_dominated_zero()
     comp = rank_composite({"A": a, "B": b})
     assert comp["A"] == pytest.approx(1.0)
     assert comp["B"] == pytest.approx(0.0)
+
+
+# --- the "8 active trading days" rule ---------------------------------------
+
+def test_active_days_counts_distinct_utc_days_with_a_trade_inside_each_window():
+    from qtrading.backtest.metrics import active_days_per_window
+    from qtrading.backtest.simulator import Trade
+
+    def tr(day, hour):
+        t = pd.Timestamp("2026-09-01", tz="UTC") + pd.Timedelta(days=day, hours=hour)
+        return Trade(t, "A/USD", "BUY", 1.0, 1.0, 1.0, 0.0)
+
+    trades = [tr(0, 3), tr(0, 5), tr(1, 1), tr(4, 2)]
+    starts = pd.DatetimeIndex([pd.Timestamp("2026-09-01", tz="UTC"), pd.Timestamp("2026-09-02", tz="UTC")])
+    s = active_days_per_window(trades, starts, window_days=3)
+    assert list(s) == [2, 1]          # [day0, day3): days {0, 1}; [day1, day4): day 1 only — day 4 is outside

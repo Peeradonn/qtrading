@@ -77,3 +77,30 @@ def test_assets_share_one_hourly_index_with_nan_before_first_bar(tmp_path):
     assert list(prices.close.columns) == ["BTC/USD", "NVDAB/USD"]
     assert prices.close["NVDAB/USD"].isna().tolist() == [True, True, False, False]
     assert prices.stale["NVDAB/USD"].tolist() == [True, True, False, False]
+
+
+def test_volume_panel_carries_dollar_volume_per_grid_hour_and_zero_where_no_bar(tmp_path):
+    idx = pd.DatetimeIndex([ts(1), ts(2), ts(4)], name="close_time")
+    frame = pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": [10.0, 10.0, 10.0], "volume": [5.0, 7.0, 9.0],
+                          "quote_volume": [100.0, 200.0, 400.0]}, index=idx)
+    src = FakeSource({"BTCUSDT": frame})
+    prices = make_store(tmp_path, binance=src).closes([BTC], ts(1), ts(4))
+    assert list(prices.volume["BTC/USD"]) == [100.0, 200.0, 0.0, 400.0]
+
+
+def test_volume_panel_uses_shares_times_close_when_no_quote_volume(tmp_path):
+    idx = pd.DatetimeIndex([ts(1), ts(2)], name="close_time")
+    frame = pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": [10.0, 20.0], "volume": [5.0, 7.0]}, index=idx)
+    src = FakeSource({"NVDA": frame})
+    prices = make_store(tmp_path, yahoo=src).closes([NVDA], ts(1), ts(2))
+    assert list(prices.volume["NVDAB/USD"]) == [50.0, 140.0]
+
+
+def test_funding_is_carried_forward_from_each_settlement_until_the_next(tmp_path):
+    class FakeFunding:
+        def funding_rates(self, symbol, start, end):
+            return pd.Series([0.0001, -0.0002], index=pd.DatetimeIndex([ts(0), ts(8)]), name="funding_rate")
+
+    store = make_store(tmp_path, binance=FakeFunding())
+    f = store.funding([BTC], ts(0), ts(9))
+    assert list(f["BTC/USD"]) == [0.0001] * 8 + [-0.0002] * 2

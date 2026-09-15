@@ -50,3 +50,14 @@ def rank_composite(windows_by_strategy: dict[str, pd.DataFrame]) -> pd.Series:
         norm = (ranks - 1) / max(len(names) - 1, 1)
         scores += weight * norm.median()
     return scores
+
+
+def active_days_per_window(trades, window_starts: pd.DatetimeIndex, window_days: int = 14) -> pd.Series:
+    """Distinct UTC calendar days with at least one trade inside [start, start + window_days), per window.
+    The competition requires at least 8 such days per bot over the 14-day contest."""
+    days = pd.DatetimeIndex(sorted({t.time.floor("D") for t in trades}))
+    counts = []
+    for start in window_starts:
+        stop = start + pd.Timedelta(days=window_days)
+        counts.append(int(((days >= start) & (days < stop)).sum()))
+    return pd.Series(counts, index=window_starts, name="active_days")
