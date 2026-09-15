@@ -240,3 +240,13 @@ def test_funding_filter_drops_crowded_assets_from_the_score():
     sig = Momentum(MomentumParams(funding_max=0.0005, funding_window_h=72, **LONG)).signals(prices)
     assert math.isnan(sig[("score", "A/USD")].iloc[-1])
     assert sig[("score", "B/USD")].iloc[-1] > 0
+
+
+def test_selection_at_several_utc_hours_per_day():
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, select_hours_utc=(0, 12)))
+    mem = {}
+    assert set(strat.targets(ts(0), sig_row({"A": 3.0, "B": 2.0, "C": 1.0}), state(memory=mem))) == {"A", "B"}
+    held = state(holdings={"A": 1.0, "B": 1.0}, weights={"A": 0.5, "B": 0.5}, memory=mem)
+    new_ranks = sig_row({"A": 0.1, "B": 0.2, "C": 9.0})
+    assert set(strat.targets(ts(6), new_ranks, held)) == {"A", "B"}          # 06:00 is not a selection hour
+    assert set(strat.targets(ts(12), new_ranks, held)) == {"B", "C"}         # 12:00 is

@@ -57,28 +57,21 @@ def strategies():
     def mom(name, pairs=LIQUID, **kw):
         return Momentum(MomentumParams(pairs=pairs, **kw), name=name), 1
 
-    # Run 3 (2026-09-15) locked the chassis: inverse-vol, 2%/day vol target, daily selection, 3/7/14-day horizons.
-    # Run 4: plateau check around it, then families 4-7 as additions that must beat it on both proxies.
+    # Run 4 (2026-09-15): vol target plateau is 1.5-2.0 (2.5 falls off); K=6 > K=8; residual momentum at 0.5 and
+    # volume confirmation each lift Sharpe/Sortino with return and tails unchanged; the funding filter at 0.05%/8h
+    # never triggered; stocks add diversification but selecting at 15:00 UTC hurt the crypto book too.
+    # Run 5: do the two positives stack; does the funding filter bind at a realistic threshold; how sensitive is the
+    # core to its selection hour (an overfitting check on the 00:00 UTC choice).
     L3 = (72, 168, 336)
     core = dict(select_every_h=24, lookbacks_h=L3, weighting="inverse_vol", vol_target_daily=0.02)
-    core_h15 = {**core, "select_every_h": 1, "select_hour_utc": 15}
+    both = dict(residual_weight=0.5, volume_confirm=True)
+    riskon = dict(select_every_h=24, lookbacks_h=L3)                     # same signal, equal weight, no vol target
     return [
         (BuyAndHold("BTC/USD"), 24),
-        mom("core", **core),
-        # plateau
-        mom("core:vt1.5", **{**core, "vol_target_daily": 0.015}),
-        mom("core:vt2.5", **{**core, "vol_target_daily": 0.025}),
-        mom("core:k8", k=8, buffer_rank=16, **core),
-        # family 4: residual momentum
-        mom("core:res0.5", residual_weight=0.5, **core),
-        mom("core:res1.0", residual_weight=1.0, **core),
-        # family 6: volume confirmation
-        mom("core:volconf", volume_confirm=True, **core),
-        # family 5: funding crowding filter (0.05% per 8h over 3 days) — needs --funding
-        mom("core:fund", funding_max=0.0005, funding_window_h=72, **core),
-        # family 7: stocks & gold, selecting inside US hours; crypto-only at the same hour as the control
-        mom("core:h15", **core_h15),
-        mom("core:h15:stocks", pairs=LIQUID + STOCKS, **core_h15),
+        mom("core", **core),                                              # locked 2026-09-16 after runs 1-6
+        mom("core:vt1.5", **{**core, "vol_target_daily": 0.015}),          # conservative twin
+        mom("riskon:eq", **riskon),                                       # risk-on twin (Screen 2 in a bull fortnight)
+        mom("core:h12", **{**core, "select_every_h": 1, "select_hour_utc": 12}),   # hour-luck diagnostic
     ]
 
 
@@ -93,6 +86,7 @@ def main() -> int:
     ap.add_argument("--every", type=int, default=None, help="override every strategy's decision cadence (hours)")
     ap.add_argument("--only", default=None, help="run only strategies whose name contains this substring")
     ap.add_argument("--funding", action="store_true", help="load the cached funding panel into prices.extra")
+    ap.add_argument("--report-from", default=None, help="score only windows starting on/after this date (UTC)")
     args = ap.parse_args()
     end = CACHE_END if args.oos else IN_SAMPLE_END
 
@@ -117,12 +111,18 @@ def main() -> int:
         print(f"  {strat.name:20} simulated in {time.time()-t0:5.1f}s, {len(res.trades)} trades")
         sys.stdout.flush()
 
+    if args.report_from:
+        cutoff = pd.Timestamp(args.report_from, tz="UTC")
+        windows = {n: w[w.index >= cutoff] for n, w in windows.items()}
+        active = {n: a[a.index >= cutoff] for n, a in active.items()}
+        print(f"
+scoring {len(next(iter(windows.values())))} windows starting on/after {cutoff:%Y-%m-%d}")
     bench = windows["hold:BTC/USD"]["ret"]
     beats = {}
     print(f"\n{'strategy':20} {'medR':>7} {'p10R':>7} {'p90R':>7} {'worstR':>7} {'%R>0':>5} {'%>BTC':>5} | "
           f"{'medMDD':>7} {'p90MDD':>7} | {'Sharpe':>7} {'Sortino':>8} {'Calmar':>7} | {'total':>8} {'maxDD':>7} {'fees':>6} | "
           f"{'actDays':>8}")
-    print(f"{'':20} (fees = commissions / average equity; actDays = min/median trading days per 14-day window)")
+    print(f"{'':20} (fees = commissions / average equity; actDays = p10/median trading days per 14-day window)")
     for name, w in windows.items():
         res = results[name]
         eq = res.equity
@@ -135,7 +135,7 @@ def main() -> int:
               f"{w.ret.min()*100:6.2f}% {(w.ret>0).mean()*100:4.0f}% {beats[name]:4.0f}% | "
               f"{pct(w.mdd,50)*100:6.2f}% {pct(w.mdd,90)*100:6.2f}% | "
               f"{pct(w.sharpe,50):7.2f} {pct(w.sortino,50):8.2f} {pct(w.calmar,50):7.2f} | "
-              f"{total*100:+7.1f}% {maxdd*100:6.1f}% {fees*100:5.2f}% | {ad.min():3d}/{int(ad.median()):3d}")
+              f"{total*100:+7.1f}% {maxdd*100:6.1f}% {fees*100:5.2f}% | {int(pct(ad, 10)):3d}/{int(ad.median()):3d}")
 
     comp = rank_composite(windows)
     print("\nScreen 3 proxy: rank-normalised composite (0.4 Sortino + 0.3 Sharpe + 0.3 Calmar), median over windows;"

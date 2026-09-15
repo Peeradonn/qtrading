@@ -28,6 +28,7 @@ class MomentumParams:
     buffer_rank: int = 12                       # keep a holding while it ranks at or above this
     select_every_h: int = 1                     # re-rank/re-select this often; risk rules still run every decision
     select_hour_utc: int | None = None          # ...or at this UTC hour each day (overrides select_every_h)
+    select_hours_utc: tuple[int, ...] | None = None   # ...or at each of these UTC hours (overlapping tranches)
     weighting: str = "equal"                    # "equal" | "inverse_vol"
     gate: str = "none"                          # "none" | "own" | "market" | "both"
     gate_pair: str = "BTC/USD"                  # the market proxy: gate and residual beta are measured against it
@@ -72,7 +73,9 @@ class Momentum:
             bits.append(f"vt{p.vol_target_daily:g}")
         if p.dd_halve or p.dd_flat:
             bits.append(f"dd{p.dd_halve:g}/{p.dd_flat:g}")
-        if p.select_hour_utc is not None:
+        if p.select_hours_utc is not None:
+            bits.append("h" + "+".join(str(h) for h in p.select_hours_utc))
+        elif p.select_hour_utc is not None:
             bits.append(f"h{p.select_hour_utc}")
         elif p.select_every_h != 1:
             bits.append(f"s{p.select_every_h}")
@@ -161,8 +164,10 @@ class Momentum:
 
         # --- selection: slow cadence ----------------------------------------
         last = mem.get("last_select")
-        if p.select_hour_utc is not None:
-            due = last is None or (t.hour == p.select_hour_utc and t - last >= pd.Timedelta(hours=1))
+        hours = p.select_hours_utc if p.select_hours_utc is not None else (
+            (p.select_hour_utc,) if p.select_hour_utc is not None else None)
+        if hours is not None:
+            due = last is None or (t.hour in hours and t - last >= pd.Timedelta(hours=1))
         else:
             due = last is None or t - last >= pd.Timedelta(hours=p.select_every_h)
         if due:
