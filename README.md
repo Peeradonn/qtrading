@@ -26,6 +26,7 @@ src/qtrading/backtest/  simulator (Roostoo fees/precision/min-order), rolling-14
 src/qtrading/execution.py  plan_orders() — the one order planner shared by backtest and live
 src/qtrading/engine/    live loop: reconcile, decide, plan, execute, journal; paper + Roostoo exchanges
 configs/                one TOML per bot (mode, strategy params, paths, limits)
+src/qtrading/secrets.py    credential scanner behind the pre-commit hook
 data/snapshots/         committed exchangeInfo snapshot the universe is built from
 data/cache/             (git-ignored) parquet price cache — populate with scripts/fetch_history.py
 tests/                  offline unit tests (pytest)
@@ -56,6 +57,14 @@ test vector) with a trailing `# pragma: allowlist secret`.
 .venv\Scripts\python.exe scripts\run_backtest.py                                # rolling 14-day scoring (--oos for the holdout)
 .venv\Scripts\python.exe scripts\run_bot.py --config configs\paper-core.toml --once   # one live paper cycle, no keys
 .venv\Scripts\python.exe scripts\run_bot.py --config configs\paper-core.toml          # hourly loop
+```
+
+Rehearsing the signed order path without a competition key — a local server implementing the documented API,
+with the real client, exchange adapter and engine running against it:
+
+```powershell
+.venv\Scripts\python.exe scripts\mock_roostoo.py --live-prices                       # terminal 1
+.venv\Scripts\python.exe scripts\run_bot.py --config configs\mock-core.toml --once   # terminal 2
 ```
 
 Runtime evidence: `logs/<bot>.jsonl` is the append-only journal (every cycle, order and error, stamped with the
