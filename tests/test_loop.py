@@ -208,3 +208,10 @@ def test_digest_is_sent_on_the_configured_cadence(tmp_path):
     assert messages == []
     bot.run_once(midnight)                                       # 00:00 -> digest
     assert len(messages) == 1 and "equity" in messages[0].lower()
+
+
+def test_cycle_end_records_how_long_the_cycle_took(tmp_path):
+    bot, ex = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5}))
+    bot.run_once(NOW)
+    last = bot.journal.last("cycle_end")
+    assert last["duration_s"] >= 0.0

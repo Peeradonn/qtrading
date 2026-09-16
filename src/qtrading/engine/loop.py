@@ -7,6 +7,7 @@ Every cycle ends with a heartbeat ping (success or fail) and, on cadence, a dige
 """
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -70,15 +71,16 @@ class Bot:
         mode = self.mode_override or (self._mode_reader() if self._mode_reader else cfg.mode)
         self.journal.record("cycle_start", at=now, mode=mode)
         self._last_state = None
+        self._started = time.monotonic()
 
         if mode == "hold":
-            self.journal.record("cycle_end", at=now, reason="hold", fills=0)
+            self.journal.record("cycle_end", at=now, reason="hold", fills=0, duration_s=self._elapsed())
             result = CycleResult(mode, "hold")
         else:
             try:
                 result = self._cycle(now, mode)
             except Exception as e:                                   # never trade blind
-                self.journal.record("error", at=now, error=f"{type(e).__name__}: {e}")
+                self.journal.record("error", at=now, error=f"{type(e).__name__}: {e}", duration_s=self._elapsed())
                 self.alert(f"[{cfg.name}] cycle error, no orders: {type(e).__name__}: {e}")
                 result = CycleResult(mode, "error")
 
@@ -132,10 +134,13 @@ class Bot:
         self._save_state()
         self.journal.record("cycle_end", at=now, equity=state.equity, cash=state.cash, targets=targets,
                             orders=len(orders), fills=len(fills), behind_pace=behind,
-                            active_days=len(self._tracker.active_days()))
+                            active_days=len(self._tracker.active_days()), duration_s=self._elapsed())
         return CycleResult(mode, "ok", targets, orders, fills, behind, state.equity)
 
     # ---- pieces -------------------------------------------------------------
+
+    def _elapsed(self) -> float:
+        return round(time.monotonic() - self._started, 1)
 
     def _check_freshness(self, prices, now: pd.Timestamp) -> None:
         pair = self.config.strategy.gate_pair if self.config.strategy.gate_pair in self._pairs else self._pairs[0]
