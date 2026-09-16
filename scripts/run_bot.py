@@ -25,6 +25,7 @@ from qtrading.engine.alerts import make_alerter, make_heartbeat
 from qtrading.engine.config import load_config
 from qtrading.engine.exchange import PaperExchange, RoostooExchange
 from qtrading.engine.journal import Journal, current_commit
+from qtrading.engine.keepawake import keep_system_awake
 from qtrading.engine.lock import AlreadyRunning, acquire, release
 from qtrading.engine.loop import Bot
 from qtrading.roostoo.client import DEFAULT_BASE_URL, RoostooClient
@@ -116,6 +117,8 @@ def main() -> int:
         log.error("refusing to start: %s", e)
         return 2
     log.info("starting %s (%s exchange, %d pairs, commit %s)", cfg.name, cfg.exchange, len(bot.universe), current_commit(ROOT))
+    if keep_system_awake(cfg.keep_awake):
+        log.info("asked the host not to suspend while this bot runs")
     bot.alert(f"[{cfg.name}] started on {cfg.exchange} at commit {current_commit(ROOT)}")
 
     try:
