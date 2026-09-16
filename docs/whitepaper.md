@@ -69,7 +69,7 @@ that looks like caution is really a fee decision.
 Hourly, for each asset in the universe:
 
 1. **Signal.** Compute returns over 3, 7 and 14 days, each ignoring the most recent 12 hours, and divide each by
-   the asset's realised volatility over the matching horizon. Average the three. This asks "how many standard
+   the asset's forecast volatility (an exponentially weighted estimate, §5.1). Average the three. This asks "how many standard
    deviations has this moved?", not "how much has this moved" — without it, the highest-volatility memecoin wins
    the ranking every day. Volatility is measured on live bars only, so a carried-forward price is never mistaken
    for a zero return.
@@ -81,7 +81,7 @@ Hourly, for each asset in the universe:
 5. **Execution.** Trade a holding only when it has drifted more than 5 percentage points from its target. Market
    orders, sells before buys so a rotation fits in available cash.
 
-There is no regime switch, no machine learning, no discretionary override. The entire strategy is about 150 lines
+There is no regime switch, no learned return model and no discretionary override. Volatility *is* modelled (§5.1) — because volatility is forecastable and returns, at this horizon, are not. The entire strategy is about 150 lines
 of pure functions with no I/O, which is what allows the backtester and the live engine to run identical code.
 
 ### Why each component exists
@@ -120,6 +120,46 @@ continuous control beat every binary switch we tried: it never has to be right a
 
 We chose 2.0% rather than the best-scoring cell because 1.5% and 2.0% sit on a plateau while 2.5% and above fall
 away. Selecting the peak of a noisy surface is how backtests are overfitted.
+
+### 5.1 Forecasting volatility, not returns
+
+Everything above rests on a volatility estimate: it is the denominator of the signal, it sets the weights, and it
+sizes the book. We originally used a trailing 7-day realised standard deviation — a backward measure used as a
+forward forecast — so we ran a pre-registered experiment to see whether it could be improved.
+
+The design deliberately avoided returns. Candidate models were scored on **forecast error against realised
+volatility** (QLIKE and MSE on log volatility, two horizons, walk-forward), with no PnL involved and no parameter
+chosen against performance. The accept rule was fixed in advance: beat the incumbent on both horizons and both
+losses, on a plateau of the parameter, and only then confirm the backtest does not degrade.
+
+| Model | 24h QLIKE | 24h MSE | 168h QLIKE | 168h MSE |
+|---|---|---|---|---|
+| Trailing 7-day (incumbent) | 0.397 | 0.179 | 0.322 | 0.116 |
+| EWMA λ=0.98 | **0.360** | 0.166 | 0.325 ✗ | 0.113 |
+| **EWMA λ=0.99 (adopted)** | 0.364 | 0.173 | **0.291** | **0.105** |
+| EWMA λ=0.995 | 0.381 | 0.187 ✗ | **0.274** | **0.103** |
+| HAR regression, walk-forward | 0.397 ✗ | **0.150** | 0.335 ✗ | **0.100** |
+
+Two findings are worth stating plainly.
+
+**A one-parameter rule beat the fitted model on the criterion that matters.** The HAR regression — the machine
+learning entrant, refitted walk-forward on daily, weekly and monthly volatility components — won both MSE tests
+and lost both QLIKE tests. That is not noise: QLIKE punishes *under*-forecasting variance far more than
+over-forecasting, and a fitted model's coefficients shrink toward the mean, so it systematically under-predicts
+spikes. For a risk control, under-forecasting volatility is the failure that cannot be tolerated — it produces
+maximum exposure exactly when markets turn violent. The model that looked better under the generic metric was
+worse for the purpose.
+
+**The optimum moves with the horizon** (λ=0.98 for a day, λ=0.995 for a week), so we took the value that wins
+everywhere rather than the best single cell. For the core strategy the backtest was a wash within our noise band
+(+104% against +108%), which satisfies the rule; the reason to adopt is that the forecast is measurably more
+accurate on evidence independent of returns, so the 2%/day target means what it says during volatility spikes the
+sample does not contain.
+
+The risk-on variant gained far more (+180% → +265%, Sharpe 0.67 → 1.06, identical max drawdown), because with
+equal weights and no volatility target the estimate enters only the signal's denominator. A flat 7-day window
+takes days to notice that an asset has become dangerous; an exponentially weighted one notices within hours and
+drops it from the selection. That is what makes risk-adjusted momentum risk-adjusted in real time.
 
 ## 6. Results
 
@@ -169,6 +209,8 @@ tested through the same harness, and discarded.
 | **Overlapping selection tranches** | Averaged the single-hour results and added 2–4 points of fees. |
 | **Tokenised equities** | Deferred: unverified weekend pricing, and selecting during US hours degraded the crypto book. |
 | **LLM-driven trading** | Cannot be backtested honestly — the model has already seen the history it would be tested on. Nondeterministic, and it costs money per decision. |
+| **HAR volatility regression** | Won on mean squared error, lost on QLIKE at both horizons: it under-predicts volatility spikes, which is the one error a risk control cannot make (§5.1). |
+| **Learned return models generally** | Our 32 assets carry an average pairwise correlation of 0.55, so they are worth about 1.8 independent series; at a weekly horizon that leaves roughly 180 effective independent observations. Measured on our own data, trailing returns predict next-day returns with an R² of 0.001, against 0.048 for volatility. There is not enough independent information to fit a return model, and we have already seen two six-parameter "improvements" cancel each other. |
 | **Reinforcement learning** | Sample-hungry and regime-overfitting; 14 days cannot distinguish skill from luck in its output. |
 | **Arbitrage / HFT / market making** | Explicitly banned by the rules. We also avoid anything resembling it, such as trading Roostoo's feed against a faster external one, or exploiting stale weekend prices. |
 
