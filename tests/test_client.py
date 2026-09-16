@@ -9,7 +9,7 @@ from qtrading.roostoo.client import RoostooClient
 from qtrading.roostoo.errors import OrderUncertain, RoostooAPIError, RoostooNetworkError
 
 API_KEY = "USEAPIKEYASMYID"
-SECRET = "S1XP1e3UZj6A7H5fATj0jNhqPxxdSJYdInClVN65XAbvqqMKjVHjA7PZj4W12oep"
+SECRET = "S1XP1e3UZj6A7H5fATj0jNhqPxxdSJYdInClVN65XAbvqqMKjVHjA7PZj4W12oep"  # pragma: allowlist secret (published in the Roostoo API docs)
 NOW_MS = 1580774512000
 
 # --- response fixtures, verbatim from roostoo/Roostoo-API-Documents (exchangeInfo from the live endpoint) ---

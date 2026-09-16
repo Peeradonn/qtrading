@@ -39,7 +39,13 @@ docs/                   design spec and research log
 py -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .[dev]
 copy .env.example .env        # then fill in ROOSTOO_API_KEY / ROOSTOO_SECRET_KEY — .env is git-ignored
+.venv\Scripts\python.exe scripts\install_hooks.py   # pre-commit hook that blocks credentials
 ```
+
+This repo is published for judging, so every credential lives in `.env` (git-ignored) and never in a tracked file.
+The pre-commit hook scans staged changes for webhook URLs, bot tokens and secret-looking assignments; run
+`scripts\check_secrets.py --all` to scan the whole tree. Mark a deliberately public value (such as the API docs'
+test vector) with a trailing `# pragma: allowlist secret`.
 
 ## Verify
 

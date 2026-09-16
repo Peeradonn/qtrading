@@ -2,7 +2,7 @@
 from qtrading.roostoo.signing import canonical_query, sign
 
 # Test credentials and expected output published in roostoo/Roostoo-API-Documents.
-DOCS_SECRET = "S1XP1e3UZj6A7H5fATj0jNhqPxxdSJYdInClVN65XAbvqqMKjVHjA7PZj4W12oep"
+DOCS_SECRET = "S1XP1e3UZj6A7H5fATj0jNhqPxxdSJYdInClVN65XAbvqqMKjVHjA7PZj4W12oep"  # pragma: allowlist secret (published in the Roostoo API docs)
 DOCS_QUERY = "pair=BNB/USD&quantity=2000&side=BUY&timestamp=1580774512000&type=MARKET"
 DOCS_SIGNATURE = "20b7fd5550b67b3bf0c1684ed0f04885261db8fdabd38611e9e6af23c19b7fff"
 
