@@ -25,6 +25,7 @@ from qtrading.engine.alerts import make_alerter, make_heartbeat
 from qtrading.engine.config import load_config
 from qtrading.engine.exchange import PaperExchange, RoostooExchange
 from qtrading.engine.journal import Journal, current_commit
+from qtrading.engine.lock import AlreadyRunning, acquire, release
 from qtrading.engine.loop import Bot
 from qtrading.roostoo.client import DEFAULT_BASE_URL, RoostooClient
 from qtrading.roostoo.models import PairInfo
@@ -107,25 +108,35 @@ def main() -> int:
     config_path = Path(args.config).resolve()
     cfg, bot = build(config_path)
     setup_logging(cfg.name)
+
+    lock_path = Path(cfg.paths.state).with_suffix(".lock")
+    try:
+        acquire(lock_path)
+    except AlreadyRunning as e:
+        log.error("refusing to start: %s", e)
+        return 2
     log.info("starting %s (%s exchange, %d pairs, commit %s)", cfg.name, cfg.exchange, len(bot.universe), current_commit(ROOT))
     bot.alert(f"[{cfg.name}] started on {cfg.exchange} at commit {current_commit(ROOT)}")
 
-    if args.once:
-        res = bot.run_once(pd.Timestamp.now(tz="UTC"))
-        log.info(summarize(res))
-        return 0 if res.reason in ("ok", "hold") else 1
-
-    while True:
-        now = pd.Timestamp.now(tz="UTC")
-        wake = next_cycle(now)
-        log.info("next cycle at %s (in %.0f s)", wake, (wake - now).total_seconds())
-        time.sleep(max(0.0, (wake - now).total_seconds()))
-        try:
+    try:
+        if args.once:
             res = bot.run_once(pd.Timestamp.now(tz="UTC"))
             log.info(summarize(res))
-        except Exception as e:                                             # run_once should never raise; belt and braces
-            log.exception("cycle crashed: %s", e)
-            bot.alert(f"[{cfg.name}] cycle crashed: {type(e).__name__}: {e}")
+            return 0 if res.reason in ("ok", "hold") else 1
+
+        while True:
+            now = pd.Timestamp.now(tz="UTC")
+            wake = next_cycle(now)
+            log.info("next cycle at %s (in %.0f s)", wake, (wake - now).total_seconds())
+            time.sleep(max(0.0, (wake - now).total_seconds()))
+            try:
+                res = bot.run_once(pd.Timestamp.now(tz="UTC"))
+                log.info(summarize(res))
+            except Exception as e:                                         # run_once should never raise; belt and braces
+                log.exception("cycle crashed: %s", e)
+                bot.alert(f"[{cfg.name}] cycle crashed: {type(e).__name__}: {e}")
+    finally:
+        release(lock_path)
 
 
 if __name__ == "__main__":
