@@ -39,7 +39,7 @@ src/qtrading/
   data/       Binance + Yahoo history, parquet cache, hourly UTC panel with stale mask   [done]
   strategy/   pure functions: universe → signals → target weights; baselines; momentum  [done]
   backtest/   competition-faithful simulator, rolling-window scorer, look-ahead check   [done]
-  engine/     live loop: reconcile state, diff targets vs holdings, place orders, log   [to be designed]
+  engine/     live loop: reconcile, decide, plan, execute, journal; paper + Roostoo exchanges  [done]
 ```
 
 Boundaries: `strategy` is pure (prices in, target weights out) so backtest and live share it byte-for-byte. `engine` is the only module that places orders. `roostoo` knows nothing about strategy. A second bot = a second strategy module + config, same engine.
@@ -97,7 +97,7 @@ Files: `strategy/__init__.py` (contract, `State`, `eligible_mask`), `strategy/ba
 | Holdout: everything after 2026-05-14 hidden unless `--oos` | Out-of-sample check reserved for the final decision |
 | `assert_no_lookahead`: perturb prices after t; signals ≤ t must not change. Runs on every strategy before its numbers are printed | The bug that ruins backtests, caught mechanically |
 
-## 7. Component: momentum strategy family — **implemented; research in progress**
+## 7. Component: momentum strategy family — **done; research closed 2026-09-16**
 
 File: `strategy/momentum.py` — one class, `Momentum`, driven by `MomentumParams`, so every hypothesis in the research plan is a configuration rather than new code. Tests: `tests/test_momentum.py` (signal arithmetic and the gate path hand-computed; each `targets()` rule in isolation).
 
@@ -127,7 +127,26 @@ File: `strategy/momentum.py` — one class, `Momentum`, driven by `MomentumParam
 | 6 | 09-16 | Overlapping selection tranches (0+12, 6+18, 3-a-day) average the hours' results and add 2–4 points of fees — no gain. Single daily selection at 00:00 UTC kept. **Core locked.** |
 | OOS | 09-16 | One look at the sealed holdout (windows from 2026-05-15): pre-committed pass rule — worst fortnight and max drawdown smaller than BTC's, beats BTC in ≥ 45% of windows. **Result (109 windows, ~8 independent fortnights; BTC: median +0.03%, worst −20.7%, maxDD −29.4%, total +13.8%):** core median +0.41%, worst −8.3%, maxDD −14.6%, beats BTC 51%, total +36.8% — **passes**. Risk-on twin: median +2.63%, worst −15.3%, maxDD −28.5%, beats BTC 62%, total +65.1%, Sharpe 1.56 — dominated this volatile net-up period, i.e. the vol target's in-sample advantage reversed OOS (regime-dependent, as its design implies). Evidence for running both bots. Active days median 8 / p10 6 for the core, 7 / 5 for risk-on → the engine's activity floor is mandatory |
 
-## 8. Components to be designed
+## 8. Component: live engine — **done, in paper trading since 2026-09-16**
+
+Files: `execution.py` (shared `plan_orders`), `engine/exchange.py`, `state.py`, `activity.py`, `journal.py`, `config.py`, `alerts.py`, `loop.py`; `scripts/run_bot.py`; `configs/paper-core.toml`, `core.toml`, `riskon.toml`. Tests: `test_execution.py`, `test_exchange.py`, `test_engine_state.py`, `test_activity.py`, `test_journal.py`, `test_config.py`, `test_alerts.py`, `test_loop.py` (38 tests).
+
+| Decision | Rationale |
+|---|---|
+| Order planning lives in one shared `plan_orders()` used by the simulator and the engine | Backtest == live by construction, not by care |
+| `Exchange` interface with `PaperExchange` (fills at the public Roostoo ticker, real fee, wallet on disk) and `RoostooExchange` | The whole loop runs keyless on real prices; swapping to the competition account changes one config line |
+| Every cycle reconciles holdings, cash and equity from the exchange; strategy memory (selection, hysteresis, peak) persists to disk | A restart resumes instead of re-selecting; the exchange is the source of truth |
+| Freshness gate: newest live BTC bar must be within 2 h; any exception anywhere → journal, alert, **no orders** | The bot never trades blind |
+| Equity sanity: an unexplained move over 5% since the last cycle → hold one cycle and alert | Catches a wrong wallet, a bad price feed, or a bug before it trades on it |
+| Activity floor: when the days left are only just enough to reach 8 of 14, the strategy is asked for a full rebalance (one-cycle `force_rebalance` flag it honours) | Backtests showed 6–7 active days in calm fortnights; the rule is a disqualifier |
+| Sells before buys; stop the cycle on `OrderUncertain`; per-order cap 60% of equity as a runaway guard; at most 12 orders per cycle | Fits rotations in cash; never risks a duplicate fill; bounds any bug |
+| Modes `trade` / `hold` / `liquidate` re-read from the committed config every cycle | The emergency stop is a commit, never a manual API call |
+| Append-only JSONL journal stamped with the running commit; Telegram alerts optional and never raising | Rule-compliance evidence tied to code; the operator hears about problems |
+| Cycle at :00:30 every hour, after the Binance hourly candle closes | Signals use complete bars |
+
+First live paper cycle (2026-09-16 05:30 UTC): 6 targets, 6 fills, ~43% of equity deployed with inverse-vol weights under the 2% vol target. Next: 48-hour paper run, `scripts/replay.py` to re-simulate the journaled period and diff decisions, EC2 deployment with systemd.
+
+## 9. Components to be designed
 
 Each gets its own section here before implementation: momentum strategy family (signal definitions, gate design, parameters and their backtest plateaus), engine (state reconciliation, order idempotency, kill switch via committed config, alerting; `PaperExchange` with the client's interface for keyless dry runs), deployment (EC2, systemd, log rotation).
 
@@ -147,14 +166,14 @@ Hypothesis families, tested in this order through one harness with one scoring r
 
 Excluded by design: ML price prediction (insufficient data), LLM sentiment (unverifiable, costs money), RL (overfits regimes), anything arbitrage-like (banned).
 
-## 9. Non-goals for v1
+## 10. Non-goals for v1
 
 Limit orders; tokenized stocks (need a second data source and non-trading-hours logic); a second bot; any LLM or RL component; any arbitrage-like behaviour (banned).
 
-## 10. Testing approach
+## 11. Testing approach
 
 TDD throughout. Unit tests are offline and deterministic (fake transport, fake clocks). Live checks are scripts under `scripts/` run by hand: `smoke_public.py` (no keys) now; a signed smoke test once competition keys exist. Before go-live: replay the backtester over the dry-run window and confirm it reproduces the live bot's decisions.
 
-## 11. Open questions (Sep 18 workshop)
+## 12. Open questions (Sep 18 workshop)
 
 Ratio sampling frequency, annualisation and cross-team normalisation · definition of an "active trading day" · limit-order fill model · rate limits per endpoint · portfolio valuation price and final snapshot time · weekend price source for tokenized stocks · whether "1x short" exists · multi-bot capital and ranking rules.
