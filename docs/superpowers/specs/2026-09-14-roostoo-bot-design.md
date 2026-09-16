@@ -146,7 +146,23 @@ Files: `execution.py` (shared `plan_orders`), `engine/exchange.py`, `state.py`, 
 
 First live paper cycle (2026-09-16 05:30 UTC): 6 targets, 6 fills, ~43% of equity deployed with inverse-vol weights under the 2% vol target. Next: 48-hour paper run, `scripts/replay.py` to re-simulate the journaled period and diff decisions, EC2 deployment with systemd.
 
-## 9. Components to be designed
+## 9. Operational hardening — **done 2026-09-16**
+
+| Component | Decision | Rationale |
+|---|---|---|
+| `qtrading/secrets.py`, `scripts/check_secrets.py`, `scripts/install_hooks.py` | A pre-commit hook blocks webhook URLs, bot tokens, ping URLs, AWS keys and long values assigned to secret-looking names; `# pragma: allowlist secret` marks deliberate exceptions | The repo is published for judging. A Discord webhook URL was pasted into the tracked `.env.example` and caught before staging — nothing in the repo would have stopped it |
+| `engine/lock.py` | A bot claims a lock file at startup and exits 2 if a live process holds it | Two instances on one account would double every order and race on the state files |
+| `engine/lock._is_alive` | Windows liveness goes through `OpenProcess`/`GetExitCodeProcess`, never `os.kill(pid, 0)` | On Windows `os.kill` maps signals to `TerminateProcess`: the "check" **killed the running bot**, observed live. The tests characterise the real OS, because an injected fake is what hid it |
+| `engine/alerts.py` | Alerts to a Discord webhook (`ALERT_WEBHOOK_URL`), Telegram as fallback; heartbeat pings to `HEARTBEAT_URL` after every cycle, `/fail` after a failed one | A dead bot sends nothing, and silence is indistinguishable from calm — only an external service can catch it |
+| `engine/report.py` | Digest on a cadence: equity, return since start, drawdown from peak, exposure, holdings, active-days pace, fills | The five questions an operator asks at 3 a.m., in one message |
+| `roostoo/mock_server.py`, `scripts/mock_roostoo.py`, `configs/mock-core.toml` | A local server implementing the documented API over real HTTP, with faults injectable per endpoint; `BotConfig.base_url` points a bot at it | **No competition key is available before Sep 26.** Without this the signed order path would first run against the real exchange on the day it matters |
+
+Rehearsal result (2026-09-16): the engine placed six signed market orders against the mock, all filled, and the
+next cycle reconciled all six holdings from `/v3/balance` and correctly traded nothing (drift band). Equity moved
+by exactly the commission. The wire format was confirmed by inspection: `pair=CAKE/USD&quantity=49717.55&side=BUY&timestamp=…&type=MARKET`
+— sorted, unencoded, HMAC validated over those exact bytes.
+
+## 10. Components to be designed
 
 Each gets its own section here before implementation: momentum strategy family (signal definitions, gate design, parameters and their backtest plateaus), engine (state reconciliation, order idempotency, kill switch via committed config, alerting; `PaperExchange` with the client's interface for keyless dry runs), deployment (EC2, systemd, log rotation).
 
@@ -166,14 +182,14 @@ Hypothesis families, tested in this order through one harness with one scoring r
 
 Excluded by design: ML price prediction (insufficient data), LLM sentiment (unverifiable, costs money), RL (overfits regimes), anything arbitrage-like (banned).
 
-## 10. Non-goals for v1
+## 11. Non-goals for v1
 
 Limit orders; tokenized stocks (need a second data source and non-trading-hours logic); a second bot; any LLM or RL component; any arbitrage-like behaviour (banned).
 
-## 11. Testing approach
+## 12. Testing approach
 
 TDD throughout. Unit tests are offline and deterministic (fake transport, fake clocks). Live checks are scripts under `scripts/` run by hand: `smoke_public.py` (no keys) now; a signed smoke test once competition keys exist. Before go-live: replay the backtester over the dry-run window and confirm it reproduces the live bot's decisions.
 
-## 12. Open questions (Sep 18 workshop)
+## 13. Open questions (Sep 18 workshop)
 
 Ratio sampling frequency, annualisation and cross-team normalisation · definition of an "active trading day" · limit-order fill model · rate limits per endpoint · portfolio valuation price and final snapshot time · weekend price source for tokenized stocks · whether "1x short" exists · multi-bot capital and ranking rules.
