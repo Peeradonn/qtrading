@@ -47,4 +47,5 @@ def test_config_loads_strategy_params_and_paths(tmp_path):
     assert cfg.paths.journal == "logs/core.jsonl"
     assert cfg.limits.max_orders_per_cycle == 12
     assert cfg.key_suffix == ""
-    assert cfg.telegram is False
+    assert cfg.alerts is False
+    assert cfg.digest_every_h == 24

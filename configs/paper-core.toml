@@ -7,6 +7,8 @@ min_trade_notional = 50.0
 lookback_days = 60
 competition_days = 14
 required_active_days = 8
+alerts = true                  # Discord webhook / Telegram from .env
+digest_every_h = 1                # hourly during paper trading
 # competition_start omitted: the activity floor is inactive during paper trading
 
 # The 35 most liquid crypto pairs on Roostoo at the 2026-09-14 snapshot, plus PAXG.

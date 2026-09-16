@@ -3,6 +3,7 @@
 run_once(now): reload mode -> refresh market data -> check freshness -> reconcile from the exchange ->
 sanity-check equity -> strategy targets (with the activity floor) -> plan_orders -> execute (sells first,
 stop on any uncertainty) -> persist memory and state -> journal. Any exception anywhere means no orders.
+Every cycle ends with a heartbeat ping (success or fail) and, on cadence, a digest to the operator.
 """
 import datetime as dt
 import json
@@ -13,10 +14,12 @@ import pandas as pd
 
 from ..execution import PlannedOrder, plan_orders
 from ..roostoo.errors import OrderUncertain
+from ..strategy import State
 from .activity import ActivityTracker
 from .config import BotConfig
 from .exchange import Exchange, Fill, InsufficientFunds
 from .journal import Journal
+from .report import cycle_digest
 from .state import load_memory, reconcile, save_memory
 
 FAR_FUTURE = dt.date(2099, 1, 1)
@@ -39,7 +42,7 @@ class CycleResult:
 
 class Bot:
     def __init__(self, config: BotConfig, strategy, exchange: Exchange, store, universe, journal: Journal,
-                 alerter=None, mode_reader=None):
+                 alerter=None, mode_reader=None, heartbeat=None):
         self.config = config
         self.strategy = strategy
         self.exchange = exchange
@@ -49,9 +52,11 @@ class Bot:
         self._pairs = [a.pair for a in self.universe]
         self.journal = journal
         self.alert = alerter or (lambda message: None)
+        self.heartbeat = heartbeat or (lambda ok=True: None)
         self._mode_reader = mode_reader
         self.mode_override: str | None = None
         self._state = self._load_state()
+        self._last_state: State | None = None
         if "activity" in self._state:
             self._tracker = ActivityTracker.from_json(self._state["activity"])
         else:
@@ -61,60 +66,74 @@ class Bot:
     # ---- one cycle ----------------------------------------------------------
 
     def run_once(self, now: pd.Timestamp) -> CycleResult:
-        cfg, limits = self.config, self.config.limits
+        cfg = self.config
         mode = self.mode_override or (self._mode_reader() if self._mode_reader else cfg.mode)
         self.journal.record("cycle_start", at=now, mode=mode)
+        self._last_state = None
+
         if mode == "hold":
             self.journal.record("cycle_end", at=now, reason="hold", fills=0)
-            return CycleResult(mode, "hold")
+            result = CycleResult(mode, "hold")
+        else:
+            try:
+                result = self._cycle(now, mode)
+            except Exception as e:                                   # never trade blind
+                self.journal.record("error", at=now, error=f"{type(e).__name__}: {e}")
+                self.alert(f"[{cfg.name}] cycle error, no orders: {type(e).__name__}: {e}")
+                result = CycleResult(mode, "error")
 
-        try:
-            end = now.floor("h")
-            prices = self.store.closes(self.universe, end - pd.Timedelta(days=cfg.lookback_days), end)
-            self._check_freshness(prices, now)
-            tickers = self.exchange.prices()
-            balances = self.exchange.balances()
-            rules = self.exchange.rules()
-            memory = load_memory(cfg.paths.memory)
-            state = reconcile(balances, tickers, self._pairs, memory, float(self._state.get("peak_equity", 0.0)))
+        self.heartbeat(result.reason != "error")
+        if mode != "hold" and cfg.digest_every_h and now.hour % cfg.digest_every_h == 0:
+            state = self._last_state or State(holdings={}, weights={}, cash=0.0, equity=0.0, peak_equity=0.0)
+            self.alert(cycle_digest(cfg.name, now, result, state, self._tracker, self._state.get("initial_equity")))
+        return result
 
-            last_equity = self._state.get("last_equity")
-            self._state["last_equity"] = state.equity
-            if last_equity and abs(state.equity - last_equity) / last_equity > limits.equity_jump_alert:
-                self._save_state()
-                self.journal.record("equity_jump", at=now, equity=state.equity, last_equity=last_equity)
-                self.alert(f"[{cfg.name}] equity moved {state.equity / last_equity - 1:+.1%} since last cycle "
-                           f"without trades — holding this cycle")
-                return CycleResult(mode, "equity_jump", equity=state.equity)
+    def _cycle(self, now: pd.Timestamp, mode: str) -> CycleResult:
+        cfg, limits = self.config, self.config.limits
+        end = now.floor("h")
+        prices = self.store.closes(self.universe, end - pd.Timedelta(days=cfg.lookback_days), end)
+        self._check_freshness(prices, now)
+        tickers = self.exchange.prices()
+        balances = self.exchange.balances()
+        rules = self.exchange.rules()
+        memory = load_memory(cfg.paths.memory)
+        state = reconcile(balances, tickers, self._pairs, memory, float(self._state.get("peak_equity", 0.0)))
+        self._last_state = state
+        self._state.setdefault("initial_equity", state.equity)
 
-            behind = self._tracker.behind_pace(now.date())
-            if mode == "liquidate":
-                targets = {}
-            else:
-                if behind:
-                    memory["force_rebalance"] = True
-                signals = self.strategy.signals(prices)
-                targets = self.strategy.targets(now, signals.iloc[-1], state) or {}
-                memory.pop("force_rebalance", None)
-
-            stale_now = {p for p in self._pairs if bool(prices.stale[p].iloc[-1])}
-            orders = plan_orders(targets, state.holdings, tickers, stale_now, state.cash, state.equity, rules,
-                                 cfg.fee_rate, cfg.min_trade_notional)
-            fills = self._execute(orders, state.equity, now)
-
-            save_memory(cfg.paths.memory, memory)
-            self._state.update(peak_equity=state.peak_equity,
-                               last_equity=state.equity - sum(f.fee for f in fills),
-                               activity=self._tracker.to_json())
+        last_equity = self._state.get("last_equity")
+        self._state["last_equity"] = state.equity
+        if last_equity and abs(state.equity - last_equity) / last_equity > limits.equity_jump_alert:
             self._save_state()
-            self.journal.record("cycle_end", at=now, equity=state.equity, cash=state.cash, targets=targets,
-                                orders=len(orders), fills=len(fills), behind_pace=behind,
-                                active_days=len(self._tracker.active_days()))
-            return CycleResult(mode, "ok", targets, orders, fills, behind, state.equity)
-        except Exception as e:                                       # never trade blind
-            self.journal.record("error", at=now, error=f"{type(e).__name__}: {e}")
-            self.alert(f"[{cfg.name}] cycle error, no orders: {type(e).__name__}: {e}")
-            return CycleResult(mode, "error")
+            self.journal.record("equity_jump", at=now, equity=state.equity, last_equity=last_equity)
+            self.alert(f"[{cfg.name}] equity moved {state.equity / last_equity - 1:+.1%} since last cycle "
+                       f"without trades — holding this cycle")
+            return CycleResult(mode, "equity_jump", equity=state.equity)
+
+        behind = self._tracker.behind_pace(now.date())
+        if mode == "liquidate":
+            targets = {}
+        else:
+            if behind:
+                memory["force_rebalance"] = True
+            signals = self.strategy.signals(prices)
+            targets = self.strategy.targets(now, signals.iloc[-1], state) or {}
+            memory.pop("force_rebalance", None)
+
+        stale_now = {p for p in self._pairs if bool(prices.stale[p].iloc[-1])}
+        orders = plan_orders(targets, state.holdings, tickers, stale_now, state.cash, state.equity, rules,
+                             cfg.fee_rate, cfg.min_trade_notional)
+        fills = self._execute(orders, state.equity, now)
+
+        save_memory(cfg.paths.memory, memory)
+        self._state.update(peak_equity=state.peak_equity,
+                           last_equity=state.equity - sum(f.fee for f in fills),
+                           activity=self._tracker.to_json())
+        self._save_state()
+        self.journal.record("cycle_end", at=now, equity=state.equity, cash=state.cash, targets=targets,
+                            orders=len(orders), fills=len(fills), behind_pace=behind,
+                            active_days=len(self._tracker.active_days()))
+        return CycleResult(mode, "ok", targets, orders, fills, behind, state.equity)
 
     # ---- pieces -------------------------------------------------------------
 

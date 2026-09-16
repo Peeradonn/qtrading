@@ -21,7 +21,7 @@ from qtrading.data.binance import BinanceSource
 from qtrading.data.store import PriceStore
 from qtrading.data.universe import build_universe, load_snapshot
 from qtrading.data.yahoo import YahooSource
-from qtrading.engine.alerts import make_alerter
+from qtrading.engine.alerts import make_alerter, make_heartbeat
 from qtrading.engine.config import load_config
 from qtrading.engine.exchange import PaperExchange, RoostooExchange
 from qtrading.engine.journal import Journal, current_commit
@@ -80,9 +80,9 @@ def build(config_path: Path):
         raise ValueError(f"unknown exchange {cfg.exchange!r}")
 
     journal = Journal(cfg.paths.journal, current_commit(ROOT))
-    alerter = make_alerter(cfg.telegram)
+    alerter = make_alerter(cfg.alerts)
     bot = Bot(cfg, Momentum(cfg.strategy, name=cfg.name), exchange, store, universe, journal, alerter,
-              mode_reader=lambda: load_config(config_path).mode)
+              mode_reader=lambda: load_config(config_path).mode, heartbeat=make_heartbeat())
     return cfg, bot
 
 

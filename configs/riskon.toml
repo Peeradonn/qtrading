@@ -10,7 +10,8 @@ lookback_days = 60
 competition_start = 2026-09-30
 competition_days = 14
 required_active_days = 8
-telegram = true
+alerts = true                  # Discord webhook / Telegram from .env
+digest_every_h = 4
 
 pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
          "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",

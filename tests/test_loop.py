@@ -184,3 +184,27 @@ def test_activity_floor_forces_a_rebalance_when_behind_pace(tmp_path):
     result = bot.run_once(later)
     assert result.behind_pace is True
     assert len(result.fills) == 1
+
+
+# --- heartbeat and digest -------------------------------------------------------
+
+def test_heartbeat_reports_success_and_failure(tmp_path):
+    beats = []
+    bot, ex = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5}))
+    bot.heartbeat = beats.append
+    bot.run_once(NOW)
+    bot.strategy = ConstantTargets({"BTC/USD": 0.5}, raise_on_targets=True)
+    bot.run_once(NOW + pd.Timedelta(hours=1))
+    assert beats == [True, False]
+
+
+def test_digest_is_sent_on_the_configured_cadence(tmp_path):
+    messages = []
+    midnight = pd.Timestamp("2026-10-04 00:00", tz="UTC")
+    bot, ex = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5}), prices=panel(end=midnight))
+    bot.alert = messages.append
+    bot.config.digest_every_h = 24
+    bot.run_once(NOW)                                            # 14:00 -> no digest
+    assert messages == []
+    bot.run_once(midnight)                                       # 00:00 -> digest
+    assert len(messages) == 1 and "equity" in messages[0].lower()
