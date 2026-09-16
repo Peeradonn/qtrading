@@ -7,8 +7,9 @@ on the Roostoo exchange, designed around the competition's scoring (return, then
 
 **Status (2026-09-16):** strategy locked after six research runs and an out-of-sample check; live engine complete
 and paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
-See [the design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md) for the strategy, the research log
-with every result, and the decision log.
+**Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring
+function, the evidence, and every hypothesis we tested and rejected. The [design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
+is the full decision log and research history.
 
 **The strategy in one paragraph.** Hourly, score the 35 most liquid crypto pairs (plus gold) on their 3-, 7- and
 14-day returns divided by their own volatility. Once a day, hold the top 6, keeping a holding while it stays in
