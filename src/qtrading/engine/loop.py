@@ -5,6 +5,7 @@ sanity-check equity -> strategy targets (with the activity floor) -> plan_orders
 stop on any uncertainty) -> persist memory and state -> journal. Any exception anywhere means no orders.
 Every cycle ends with a heartbeat ping (success or fail) and, on cadence, a digest to the operator.
 """
+import copy
 import datetime as dt
 import json
 import time
@@ -113,6 +114,7 @@ class Bot:
             return CycleResult(mode, "equity_jump", equity=state.equity)
 
         behind = self._tracker.behind_pace(now.date())
+        memory_in = copy.deepcopy(memory)                      # the inputs replay needs, before targets() mutates them
         if mode == "liquidate":
             targets = {}
         else:
@@ -134,7 +136,10 @@ class Bot:
         self._save_state()
         self.journal.record("cycle_end", at=now, equity=state.equity, cash=state.cash, targets=targets,
                             orders=len(orders), fills=len(fills), behind_pace=behind,
-                            active_days=len(self._tracker.active_days()), duration_s=self._elapsed())
+                            active_days=len(self._tracker.active_days()), duration_s=self._elapsed(),
+                            state={"holdings": state.holdings, "weights": state.weights, "cash": state.cash,
+                                   "equity": state.equity, "peak_equity": state.peak_equity},
+                            memory_in=memory_in)
         return CycleResult(mode, "ok", targets, orders, fills, behind, state.equity)
 
     # ---- pieces -------------------------------------------------------------

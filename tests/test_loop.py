@@ -215,3 +215,22 @@ def test_cycle_end_records_how_long_the_cycle_took(tmp_path):
     bot.run_once(NOW)
     last = bot.journal.last("cycle_end")
     assert last["duration_s"] >= 0.0
+
+
+def test_cycle_end_records_the_state_and_memory_the_decision_was_made_from(tmp_path):
+    """Replay needs the exact inputs: the reconciled book, and the strategy memory as it was BEFORE targets()."""
+    class Remembering(ConstantTargets):
+        def targets(self, t, s, state):
+            state.memory["seen"] = state.memory.get("seen", 0) + 1
+            return super().targets(t, s, state)
+
+    bot, ex = make_bot(tmp_path, Remembering({"BTC/USD": 0.5}))
+    bot.run_once(NOW)
+    bot.run_once(NOW + pd.Timedelta(hours=1))
+    ends = [json.loads(line) for line in (tmp_path / "j.jsonl").read_text().splitlines()
+            if json.loads(line)["kind"] == "cycle_end"]
+    assert ends[0]["memory_in"] == {}                    # first decision saw empty memory
+    assert ends[1]["memory_in"]["seen"] == 1             # second saw what the first wrote, not its own increment
+    assert ends[1]["state"]["cash"] > 0
+    assert ends[1]["state"]["holdings"]["BTC/USD"] > 0
+    assert ends[1]["state"]["peak_equity"] >= ends[1]["state"]["equity"]
