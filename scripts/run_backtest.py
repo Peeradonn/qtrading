@@ -66,12 +66,16 @@ def strategies():
     core = dict(select_every_h=24, lookbacks_h=L3, weighting="inverse_vol", vol_target_daily=0.02)
     both = dict(residual_weight=0.5, volume_confirm=True)
     riskon = dict(select_every_h=24, lookbacks_h=L3)                     # same signal, equal weight, no vol target
+    # 2026-09-16: the EWMA volatility model won the pre-registered forecast-error experiment (see the design doc).
+    # The accept rule's second half is this: adopting it must not degrade the backtest.
+    # Plateau check on the risk-on twin, where the EWMA volatility model produced a large in-sample jump.
+    # The shipped configuration, after the volatility-forecast experiment of 2026-09-16.
+    ewma = dict(vol_model="ewma", ewma_lambda=0.99)
     return [
         (BuyAndHold("BTC/USD"), 24),
-        mom("core", **core),                                              # locked 2026-09-16 after runs 1-6
-        mom("core:vt1.5", **{**core, "vol_target_daily": 0.015}),          # conservative twin
-        mom("riskon:eq", **riskon),                                       # risk-on twin (Screen 2 in a bull fortnight)
-        mom("core:h12", **{**core, "select_every_h": 1, "select_hour_utc": 12}),   # hour-luck diagnostic
+        mom("core", **core, **ewma),
+        mom("core:trailing (old)", **core),
+        mom("riskon", **riskon, **ewma),
     ]
 
 

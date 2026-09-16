@@ -22,7 +22,9 @@ class MomentumParams:
     pairs: tuple[str, ...] | None = None        # restrict the selectable universe; None = every pair
     lookbacks_h: tuple[int, ...] = (24, 72, 168, 336)
     skip_h: int = 12                            # ignore the most recent hours (short-term reversal)
-    vol_window_h: int = 168
+    vol_window_h: int = 168                     # trailing window, and the warm-up floor for either model
+    vol_model: str = "trailing"                 # "trailing" | "ewma"
+    ewma_lambda: float = 0.99                   # RiskMetrics decay on hourly squared returns (~3-day half-life)
     min_age_h: int = 720
     k: int = 6
     buffer_rank: int = 12                       # keep a holding while it ranks at or above this
@@ -69,6 +71,8 @@ class Momentum:
     def _default_name(self) -> str:
         p = self.params
         bits = ["mom", p.weighting[:2], f"k{p.k}", f"g:{p.gate}"]
+        if p.vol_model != "trailing":
+            bits.append(f"{p.vol_model}{p.ewma_lambda:g}")
         if p.vol_target_daily:
             bits.append(f"vt{p.vol_target_daily:g}")
         if p.dd_halve or p.dd_flat:
@@ -92,7 +96,13 @@ class Momentum:
         # hourly log returns on live bars only: a carried-forward price is not a zero-return observation
         logret = np.log(close).diff().where(~prices.stale[cols])
         # min_periods: a stock has only ~35 live returns in a 168h window (7 bars x 5 days), so require W/6
-        vol = logret.rolling(p.vol_window_h, min_periods=max(2, p.vol_window_h // 6)).std()
+        warmup = max(2, p.vol_window_h // 6)
+        if p.vol_model == "ewma":
+            # exponentially weighted variance of squared returns (RiskMetrics). Chosen over the trailing window on
+            # forecast error alone -- see the volatility experiment in the design doc.
+            vol = np.sqrt((logret ** 2).ewm(alpha=1 - p.ewma_lambda, min_periods=warmup).mean())
+        else:
+            vol = logret.rolling(p.vol_window_h, min_periods=warmup).std()
 
         raw = self._horizon_mean(lambda L: close.shift(p.skip_h) / close.shift(p.skip_h + L) - 1, vol)
         composite = raw

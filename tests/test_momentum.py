@@ -262,3 +262,33 @@ def test_force_rebalance_flag_bypasses_the_drift_band_for_one_call():
     mem = {"force_rebalance": True}
     strat.targets(ts(2), row, state(**held, memory=mem))
     assert "force_rebalance" not in mem                                    # consumed: one cycle only
+
+
+# --- volatility model -----------------------------------------------------------
+
+# log returns 0.1, -0.2, 0.3 -> squared 0.01, 0.04, 0.09. Exponentially weighted with lambda 0.5 at the last bar:
+# (0.09 + 0.5*0.04 + 0.25*0.01) / (1 + 0.5 + 0.25) = 0.1125 / 1.75 = 0.0642857 -> vol = 0.253546
+def test_ewma_volatility_weights_recent_squared_returns_more_heavily():
+    prices = panel({"A/USD": [100.0, 100 * math.exp(0.1), 100 * math.exp(-0.1), 100 * math.exp(0.2)]})
+    strat = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=3, min_age_h=0,
+                                    vol_model="ewma", ewma_lambda=0.5))
+    assert strat.signals(prices)[("vol", "A/USD")].iloc[3] == pytest.approx(0.253546, rel=1e-4)
+
+
+def test_trailing_volatility_remains_the_default():
+    prices = panel({"A/USD": [100.0, 100 * math.exp(0.1), 100 * math.exp(-0.1), 100 * math.exp(0.2)]})
+    default = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=3, min_age_h=0))
+    ewma = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=3, min_age_h=0, vol_model="ewma"))
+    a = default.signals(prices)[("vol", "A/USD")].iloc[3]
+    b = ewma.signals(prices)[("vol", "A/USD")].iloc[3]
+    assert a != pytest.approx(b)
+
+
+def test_ewma_volatility_reacts_faster_to_a_volatility_spike():
+    calm = [100.0 * math.exp(0.001 * (-1) ** i) for i in range(400)]
+    spike = [calm[-1] * math.exp(0.05 * (-1) ** i) for i in range(20)]
+    prices = panel({"A/USD": calm + spike})
+    kw = dict(lookbacks_h=(1,), skip_h=0, vol_window_h=168, min_age_h=0)
+    trailing = Momentum(MomentumParams(**kw)).signals(prices)[("vol", "A/USD")].iloc[-1]
+    ewma = Momentum(MomentumParams(vol_model="ewma", ewma_lambda=0.99, **kw)).signals(prices)[("vol", "A/USD")].iloc[-1]
+    assert ewma > trailing

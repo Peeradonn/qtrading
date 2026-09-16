@@ -21,7 +21,9 @@ pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/
 [strategy]                     # the core, locked 2026-09-16
 lookbacks_h = [72, 168, 336]
 skip_h = 12
-vol_window_h = 168
+vol_window_h = 168             # warm-up floor for the volatility estimate
+vol_model = "ewma"             # chosen on forecast error, not returns - see docs/whitepaper.md
+ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
 min_age_h = 720
 k = 6
 buffer_rank = 12
