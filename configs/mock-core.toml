@@ -1,0 +1,44 @@
+# The core bot against the LOCAL MOCK exchange (scripts/mock_roostoo.py), for rehearsing the signed order path
+# without a competition key. Identical to configs/core.toml except for the exchange endpoint and credentials.
+name = "mock-core"
+mode = "trade"
+exchange = "roostoo"
+base_url = "http://127.0.0.1:8787"
+key_suffix = "_MOCK"           # ROOSTOO_API_KEY_MOCK / ROOSTOO_SECRET_KEY_MOCK — fixed test values, see the script
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_days = 14
+required_active_days = 8
+alerts = false                 # a rehearsal should not page anyone
+digest_every_h = 0
+
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]                     # the core, locked 2026-09-16
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168
+min_age_h = 720
+k = 6
+buffer_rank = 12
+select_every_h = 24
+weighting = "inverse_vol"
+vol_target_daily = 0.02
+avg_corr = 0.7
+drift_band = 0.05
+
+[paths]
+wallet = "data/mock/mock-core_wallet.json"
+journal = "logs/mock-core.jsonl"
+memory = "data/mock/mock-core_memory.json"
+state = "data/mock/mock-core_state.json"
+
+[limits]
+max_orders_per_cycle = 12
+max_order_fraction = 0.6
+data_max_lag_h = 2
+equity_jump_alert = 0.05

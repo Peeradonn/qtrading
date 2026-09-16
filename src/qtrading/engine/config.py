@@ -43,6 +43,7 @@ class BotConfig:
     alerts: bool = False                   # send operator alerts (Discord webhook or Telegram, from the environment)
     digest_every_h: int = 24               # post a cycle digest at hours divisible by this; 0 = never
     key_suffix: str = ""                  # ROOSTOO_API_KEY<suffix> — lets two bots use two accounts
+    base_url: str | None = None            # override the exchange URL, e.g. the local mock server
 
 
 def load_config(path) -> BotConfig:
@@ -68,4 +69,5 @@ def load_config(path) -> BotConfig:
         alerts=bool(raw.get("alerts", raw.get("telegram", False))),
         digest_every_h=int(raw.get("digest_every_h", 24)),
         key_suffix=str(raw.get("key_suffix", "")),
+        base_url=raw.get("base_url"),
     )

@@ -66,7 +66,7 @@ def build(config_path: Path):
     snapshot = load_snapshot(SNAPSHOT)
     universe = [a for a in build_universe(snapshot) if a.pair in cfg.strategy.pairs]
     store = PriceStore(cache_dir=ROOT / "data" / "cache", sources={"binance": BinanceSource(), "yahoo": YahooSource()})
-    base_url = os.environ.get("ROOSTOO_BASE_URL", DEFAULT_BASE_URL)
+    base_url = cfg.base_url or os.environ.get("ROOSTOO_BASE_URL", DEFAULT_BASE_URL)
 
     if cfg.exchange == "paper":
         public = RoostooClient(api_key="", secret_key="", base_url=base_url)

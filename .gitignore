@@ -18,3 +18,5 @@ data/results/
 # bot runtime state (paper and live)
 data/paper/
 data/live/
+
+data/mock/

@@ -49,3 +49,12 @@ def test_config_loads_strategy_params_and_paths(tmp_path):
     assert cfg.key_suffix == ""
     assert cfg.alerts is False
     assert cfg.digest_every_h == 24
+
+
+def test_base_url_defaults_to_none_and_can_be_overridden(tmp_path):
+    p = tmp_path / "a.toml"
+    p.write_text(SAMPLE)
+    assert load_config(p).base_url is None
+    p2 = tmp_path / "b.toml"
+    p2.write_text(SAMPLE.replace('exchange = "paper"', 'exchange = "roostoo"\nbase_url = "http://127.0.0.1:8787"'))
+    assert load_config(p2).base_url == "http://127.0.0.1:8787"
