@@ -69,7 +69,8 @@ class Bot:
             return CycleResult(mode, "hold")
 
         try:
-            prices = self.store.closes(self.universe, now - pd.Timedelta(days=cfg.lookback_days), now.floor("h"))
+            end = now.floor("h")
+            prices = self.store.closes(self.universe, end - pd.Timedelta(days=cfg.lookback_days), end)
             self._check_freshness(prices, now)
             tickers = self.exchange.prices()
             balances = self.exchange.balances()

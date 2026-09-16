@@ -104,3 +104,11 @@ def test_funding_is_carried_forward_from_each_settlement_until_the_next(tmp_path
     store = make_store(tmp_path, binance=FakeFunding())
     f = store.funding([BTC], ts(0), ts(9))
     assert list(f["BTC/USD"]) == [0.0001] * 8 + [-0.0002] * 2
+
+
+def test_off_hour_start_and_end_snap_the_grid_to_whole_hours(tmp_path):
+    src = FakeSource({"BTCUSDT": bars([(h, 100 + h) for h in range(1, 6)])})
+    prices = make_store(tmp_path, binance=src).closes([BTC], ts(1.5), ts(4.5))
+    assert list(prices.close.index) == [ts(2), ts(3), ts(4)]
+    assert list(prices.close["BTC/USD"]) == [102, 103, 104]
+    assert not prices.stale["BTC/USD"].any()

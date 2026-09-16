@@ -31,7 +31,7 @@ class PriceStore:
     # ---- panels -----------------------------------------------------------
 
     def closes(self, assets: list[Asset], start: pd.Timestamp, end: pd.Timestamp) -> Prices:
-        grid = pd.date_range(start, end, freq=self._step, name="time")
+        grid = self._grid(start, end)
         close, stale, volume = {}, {}, {}
         for a in assets:
             bars = self._bars(a, start, end)
@@ -46,7 +46,7 @@ class PriceStore:
     def funding(self, assets: list[Asset], start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         """Perpetual funding rate per pair, carried forward from each settlement until the next.
         Pairs whose source has no funding data get a NaN column."""
-        grid = pd.date_range(start, end, freq=self._step, name="time")
+        grid = self._grid(start, end)
         out = {}
         for a in assets:
             source = self._sources.get(a.source)
@@ -59,6 +59,10 @@ class PriceStore:
             series = frame["funding_rate"] if not frame.empty else pd.Series(dtype=float)
             out[a.pair] = series.reindex(grid, method="ffill") if not series.empty else pd.Series(float("nan"), index=grid)
         return pd.DataFrame(out, index=grid)
+
+    def _grid(self, start: pd.Timestamp, end: pd.Timestamp) -> pd.DatetimeIndex:
+        """Whole-hour grid inside [start, end]: bars close on the hour, so an off-hour request must snap."""
+        return pd.date_range(start.ceil(self._step), end.floor(self._step), freq=self._step, name="time")
 
     # ---- cache ------------------------------------------------------------
 
