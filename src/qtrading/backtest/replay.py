@@ -5,6 +5,7 @@ the strategy memory it decided from, so every cycle can be recomputed here and c
 actually targeted. A mismatch means the data changed under us, the code changed, or there is a bug — all three
 are things to find before the competition rather than during it.
 """
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -12,6 +13,7 @@ import pandas as pd
 from ..strategy import State
 
 TOLERANCE = 1e-9
+ISO_DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
 
 
 @dataclass
@@ -22,11 +24,22 @@ class CycleCheck:
     error: str | None = None
 
 
+def _revive(value):
+    """The journal writes timestamps as ISO strings; the strategy does date arithmetic on them."""
+    if isinstance(value, str) and ISO_DATETIME.match(value):
+        try:
+            return pd.Timestamp(value)
+        except ValueError:
+            return value
+    return value
+
+
 def state_from_record(record: dict) -> State:
     s = record["state"]
+    memory = {k: _revive(v) for k, v in (record.get("memory_in") or {}).items()}
     return State(holdings=dict(s.get("holdings") or {}), weights=dict(s.get("weights") or {}),
                  cash=float(s.get("cash", 0.0)), equity=float(s.get("equity", 0.0)),
-                 peak_equity=float(s.get("peak_equity", 0.0)), memory=dict(record.get("memory_in") or {}))
+                 peak_equity=float(s.get("peak_equity", 0.0)), memory=memory)
 
 
 def compare_targets(record: dict, recomputed: dict, tolerance: float = TOLERANCE) -> CycleCheck:

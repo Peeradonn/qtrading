@@ -45,3 +45,31 @@ def test_the_check_carries_the_cycle_time():
     check = compare_targets(record({}), {})
     assert check.at == pd.Timestamp("2026-10-03 14:00", tz="UTC")
     assert isinstance(check, CycleCheck)
+
+
+def test_timestamps_in_memory_survive_the_round_trip_through_json():
+    """The journal serialises the strategy's memory, so `last_select` arrives back as a string; the strategy
+    does date arithmetic on it and would crash on a str."""
+    st = state_from_record(record({}, memory={"last_select": "2026-10-03T00:00:00+00:00",
+                                              "selected": ["BTC/USD", "ETH/USD"],
+                                              "peak": 1_000_000.0, "flat_since": None}))
+    assert st.memory["last_select"] == pd.Timestamp("2026-10-03", tz="UTC")
+    assert st.memory["selected"] == ["BTC/USD", "ETH/USD"]      # pair names are not timestamps
+    assert st.memory["peak"] == 1_000_000.0
+    assert st.memory["flat_since"] is None
+
+
+def test_a_recomputation_that_raises_is_reported_not_swallowed():
+    class Exploding:
+        name = "boom"
+
+        def signals(self, prices):
+            raise RuntimeError("no data")
+
+        def targets(self, t, s, state):
+            return {}
+
+    from qtrading.backtest.replay import replay_cycle
+    check = replay_cycle(Exploding(), prices=None, record=record({"BTC/USD": 0.5}))
+    assert check.matches is False
+    assert "no data" in check.error
