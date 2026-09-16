@@ -196,10 +196,12 @@ class Momentum:
             exposure *= 0.5
         weights = weights * exposure
 
+        # the engine sets force_rebalance for one cycle when the active-days pace is at risk
+        band = 0.0 if mem.pop("force_rebalance", False) else p.drift_band
         out = {}
         for pair, w in weights.items():
             current = state.weights.get(pair, 0.0)
-            out[pair] = current if current > 0 and abs(w - current) < p.drift_band else float(w)
+            out[pair] = current if current > 0 and abs(w - current) < band else float(w)
         return out
 
     def _select(self, s: pd.Series, state: State) -> list[str]:

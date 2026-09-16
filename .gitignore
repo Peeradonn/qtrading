@@ -14,3 +14,7 @@ dist/
 logs/
 data/cache/
 data/results/
+
+# bot runtime state (paper and live)
+data/paper/
+data/live/

@@ -1,0 +1,41 @@
+# The risk-on twin: the same signal as the core, equal weights, no volatility target. Aimed at Screen 2 in a
+# trending fortnight; the core covers the other regimes. Separate competition account and keys (ROOSTOO_API_KEY_RISKON).
+name = "riskon"
+mode = "trade"
+exchange = "roostoo"
+key_suffix = "_RISKON"         # reads ROOSTOO_API_KEY_RISKON / ROOSTOO_SECRET_KEY_RISKON
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_start = 2026-09-30
+competition_days = 14
+required_active_days = 8
+telegram = true
+
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168
+min_age_h = 720
+k = 6
+buffer_rank = 12
+select_every_h = 24
+weighting = "equal"
+drift_band = 0.05
+
+[paths]
+wallet = "data/live/riskon_wallet.json"
+journal = "logs/riskon.jsonl"
+memory = "data/live/riskon_memory.json"
+state = "data/live/riskon_state.json"
+
+[limits]
+max_orders_per_cycle = 12
+max_order_fraction = 0.6
+data_max_lag_h = 2
+equity_jump_alert = 0.05

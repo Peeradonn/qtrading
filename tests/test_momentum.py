@@ -250,3 +250,15 @@ def test_selection_at_several_utc_hours_per_day():
     new_ranks = sig_row({"A": 0.1, "B": 0.2, "C": 9.0})
     assert set(strat.targets(ts(6), new_ranks, held)) == {"A", "B"}          # 06:00 is not a selection hour
     assert set(strat.targets(ts(12), new_ranks, held)) == {"B", "C"}         # 12:00 is
+
+
+def test_force_rebalance_flag_bypasses_the_drift_band_for_one_call():
+    strat = Momentum(MomentumParams(k=2, drift_band=0.05))
+    row = sig_row({"A": 2.0, "B": 1.0})
+    held = dict(holdings={"A": 1.0, "B": 1.0}, weights={"A": 0.48, "B": 0.47})
+    assert strat.targets(ts(0), row, state(**held)) == {"A": pytest.approx(0.48), "B": pytest.approx(0.47)}
+    forced = strat.targets(ts(1), row, state(**held, memory={"force_rebalance": True}))
+    assert forced == {"A": pytest.approx(0.5), "B": pytest.approx(0.5)}
+    mem = {"force_rebalance": True}
+    strat.targets(ts(2), row, state(**held, memory=mem))
+    assert "force_rebalance" not in mem                                    # consumed: one cycle only

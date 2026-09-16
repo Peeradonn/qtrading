@@ -20,7 +20,7 @@ class Paths:
 @dataclass
 class Limits:
     max_orders_per_cycle: int = 12
-    max_order_fraction: float = 0.4        # of equity, per order
+    max_order_fraction: float = 0.6        # of equity, per order: a runaway-sizing guard, above any legitimate weight
     data_max_lag_h: int = 2                # newest BTC bar must be at most this old
     equity_jump_alert: float = 0.05        # unexplained equity move since last cycle -> hold + alert
     ticker_max_age_s: int = 120
@@ -41,6 +41,7 @@ class BotConfig:
     paths: Paths
     limits: Limits
     telegram: bool = False
+    key_suffix: str = ""                  # ROOSTOO_API_KEY<suffix> — lets two bots use two accounts
 
 
 def load_config(path) -> BotConfig:
@@ -64,4 +65,5 @@ def load_config(path) -> BotConfig:
         paths=Paths(**raw["paths"]),
         limits=Limits(**raw.get("limits", {})),
         telegram=bool(raw.get("telegram", False)),
+        key_suffix=str(raw.get("key_suffix", "")),
     )

@@ -1,0 +1,41 @@
+# Paper run of the core strategy on live Roostoo prices, no API keys. Start with: scripts/run_bot.py --config configs/paper-core.toml
+name = "paper-core"
+mode = "trade"                 # trade | hold | liquidate — re-read every cycle; change it via a commit
+exchange = "paper"
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_days = 14
+required_active_days = 8
+# competition_start omitted: the activity floor is inactive during paper trading
+
+# The 35 most liquid crypto pairs on Roostoo at the 2026-09-14 snapshot, plus PAXG.
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]                     # the core, locked 2026-09-16 after research runs 1-6 and the out-of-sample check
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168
+min_age_h = 720
+k = 6
+buffer_rank = 12
+select_every_h = 24
+weighting = "inverse_vol"
+vol_target_daily = 0.02
+avg_corr = 0.7
+drift_band = 0.05
+
+[paths]
+wallet = "data/paper/paper-core_wallet.json"
+journal = "logs/paper-core.jsonl"
+memory = "data/paper/paper-core_memory.json"
+state = "data/paper/paper-core_state.json"
+
+[limits]
+max_orders_per_cycle = 12
+max_order_fraction = 0.6
+data_max_lag_h = 2
+equity_jump_alert = 0.05
