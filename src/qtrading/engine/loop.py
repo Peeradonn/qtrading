@@ -94,7 +94,13 @@ class Bot:
     def _cycle(self, now: pd.Timestamp, mode: str) -> CycleResult:
         cfg, limits = self.config, self.config.limits
         end = now.floor("h")
-        prices = self.store.closes(self.universe, end - pd.Timedelta(days=cfg.lookback_days), end)
+        # a slow network must not stretch a cycle: once the budget is spent the store serves cache, those assets
+        # look stale for the newest hour, and nothing downstream trades them
+        budget_over = self._budget(limits.data_deadline_s)
+        prices = self.store.closes(self.universe, end - pd.Timedelta(days=cfg.lookback_days), end,
+                                   deadline=budget_over)
+        if budget_over():
+            self.journal.record("data_budget_spent", at=now, budget_s=limits.data_deadline_s)
         self._check_freshness(prices, now)
         tickers = self.exchange.prices()
         balances = self.exchange.balances()
@@ -146,6 +152,11 @@ class Bot:
 
     def _elapsed(self) -> float:
         return round(time.monotonic() - self._started, 1)
+
+    def _budget(self, seconds: float):
+        """A callable that becomes True once this cycle has spent ``seconds`` on refreshing data."""
+        until = time.monotonic() + seconds
+        return lambda: time.monotonic() >= until
 
     def _check_freshness(self, prices, now: pd.Timestamp) -> None:
         pair = self.config.strategy.gate_pair if self.config.strategy.gate_pair in self._pairs else self._pairs[0]

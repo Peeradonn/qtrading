@@ -112,3 +112,57 @@ def test_off_hour_start_and_end_snap_the_grid_to_whole_hours(tmp_path):
     assert list(prices.close.index) == [ts(2), ts(3), ts(4)]
     assert list(prices.close["BTC/USD"]) == [102, 103, 104]
     assert not prices.stale["BTC/USD"].any()
+
+
+class CountingSource(FakeSource):
+    """Records how many network fetches were attempted."""
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.fetches = 0
+
+    def bars(self, symbol, start, end):
+        self.fetches += 1
+        return super().bars(symbol, start, end)
+
+
+ETH = Asset("ETH/USD", "ETH", "crypto", "binance", "ETHUSDT")
+
+
+def warm_cache(tmp_path, src, assets, hours):
+    """Populate the on-disk cache so later calls have something to fall back to."""
+    PriceStore(cache_dir=tmp_path, sources={"binance": src}).closes(assets, ts(1), ts(hours))
+
+
+def test_a_deadline_already_passed_serves_the_cache_without_touching_the_network(tmp_path):
+    data = {"BTCUSDT": bars([(h, 100 + h) for h in range(1, 9)]),
+            "ETHUSDT": bars([(h, 200 + h) for h in range(1, 9)])}
+    warm_cache(tmp_path, CountingSource(data), [BTC, ETH], 5)
+    src = CountingSource(data)
+    store = PriceStore(cache_dir=tmp_path, sources={"binance": src})
+    prices = store.closes([BTC, ETH], ts(1), ts(8), deadline=lambda: True)
+    assert src.fetches == 0
+    # the cache ends at hour 5; later hours carry that close forward and are flagged stale, so nothing trades them
+    assert list(prices.close["BTC/USD"]) == [101, 102, 103, 104, 105, 105, 105, 105]
+    assert list(prices.stale["BTC/USD"]) == [False] * 5 + [True] * 3
+
+
+def test_without_a_deadline_every_asset_is_refreshed(tmp_path):
+    data = {"BTCUSDT": bars([(h, 100 + h) for h in range(1, 9)]),
+            "ETHUSDT": bars([(h, 200 + h) for h in range(1, 9)])}
+    warm_cache(tmp_path, CountingSource(data), [BTC, ETH], 5)
+    src = CountingSource(data)
+    PriceStore(cache_dir=tmp_path, sources={"binance": src}).closes([BTC, ETH], ts(1), ts(8))
+    assert src.fetches == 2
+    
+
+def test_a_deadline_reached_partway_leaves_the_remaining_assets_on_cache(tmp_path):
+    data = {"BTCUSDT": bars([(h, 100 + h) for h in range(1, 9)]),
+            "ETHUSDT": bars([(h, 200 + h) for h in range(1, 9)])}
+    warm_cache(tmp_path, CountingSource(data), [BTC, ETH], 5)
+    src = CountingSource(data)
+    store = PriceStore(cache_dir=tmp_path, sources={"binance": src})
+    prices = store.closes([BTC, ETH], ts(1), ts(8), deadline=lambda: src.fetches >= 1)
+    assert src.fetches == 1
+    assert not prices.stale["BTC/USD"].iloc[-1]        # first asset refreshed to the newest hour
+    assert prices.stale["ETH/USD"].iloc[-1]            # second fell back to cache

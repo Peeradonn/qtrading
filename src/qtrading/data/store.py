@@ -11,6 +11,8 @@ import pandas as pd
 
 from .universe import Asset
 
+_EMPTY = pd.DataFrame()          # returned instead of fetching once a refresh budget is spent
+
 
 @dataclass
 class Prices:
@@ -30,11 +32,14 @@ class PriceStore:
 
     # ---- panels -----------------------------------------------------------
 
-    def closes(self, assets: list[Asset], start: pd.Timestamp, end: pd.Timestamp) -> Prices:
+    def closes(self, assets: list[Asset], start: pd.Timestamp, end: pd.Timestamp, deadline=None) -> Prices:
+        """``deadline`` is a callable returning True once the time budget for refreshing is spent; from that
+        point on assets are served from cache alone. Their newest hour then has no bar, so the stale mask marks
+        them and nothing downstream will trade them."""
         grid = self._grid(start, end)
         close, stale, volume = {}, {}, {}
         for a in assets:
-            bars = self._bars(a, start, end)
+            bars = self._bars(a, start, end, cache_only=bool(deadline and deadline()))
             on_grid = bars["close"].resample(self._step, label="right", closed="right").last().reindex(grid)
             stale[a.pair] = on_grid.isna()
             close[a.pair] = on_grid.ffill()
@@ -69,13 +74,14 @@ class PriceStore:
     def _path(self, a: Asset) -> Path:
         return self._dir / f"{a.source}_{a.symbol.replace('.', '_')}_{self._interval}.parquet"
 
-    def _bars(self, a: Asset, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    def _bars(self, a: Asset, start: pd.Timestamp, end: pd.Timestamp, cache_only: bool = False) -> pd.DataFrame:
         source = self._sources[a.source]
-        return self._cached(self._path(a), lambda s, e: source.bars(a.symbol, s, e), start, end, step=self._step)
+        fetch = (lambda s, e: _EMPTY) if cache_only else (lambda s, e: source.bars(a.symbol, s, e))
+        return self._cached(self._path(a), fetch, start, end, step=self._step)
 
     @staticmethod
     def _cached(path: Path, fetch, start: pd.Timestamp, end: pd.Timestamp, step: pd.Timedelta) -> pd.DataFrame:
-        """Serve [start, end] from the parquet at ``path``, fetching only the missing head and/or tail."""
+        """Serve [start, end] from the parquet at ``path``, calling ``fetch`` only for the missing head/tail."""
         cached = pd.read_parquet(path) if path.exists() else None
         if cached is not None and cached.empty:
             cached = None

@@ -41,4 +41,5 @@ state = "data/mock/mock-core_state.json"
 max_orders_per_cycle = 12
 max_order_fraction = 0.6
 data_max_lag_h = 2
+data_deadline_s = 120
 equity_jump_alert = 0.05

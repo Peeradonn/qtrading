@@ -36,7 +36,7 @@ class FakeStore:
     def __init__(self, prices: Prices):
         self.prices = prices
 
-    def closes(self, assets, start, end):
+    def closes(self, assets, start, end, deadline=None):
         return self.prices
 
 
@@ -234,3 +234,34 @@ def test_cycle_end_records_the_state_and_memory_the_decision_was_made_from(tmp_p
     assert ends[1]["state"]["cash"] > 0
     assert ends[1]["state"]["holdings"]["BTC/USD"] > 0
     assert ends[1]["state"]["peak_equity"] >= ends[1]["state"]["equity"]
+
+
+class SlowStore(FakeStore):
+    """A store that records whether the cycle handed it a refresh deadline."""
+
+    def __init__(self, prices):
+        super().__init__(prices)
+        self.deadline_seen = None
+
+    def closes(self, assets, start, end, deadline=None):
+        self.deadline_seen = deadline
+        return self.prices
+
+
+def test_the_cycle_gives_the_data_refresh_a_time_budget(tmp_path):
+    store = SlowStore(panel())
+    cfg = config(tmp_path, data_deadline_s=0.0)                  # budget already spent
+    ex = PaperExchange(lambda: dict(TICKER), RULES, cfg.paths.wallet, fee_rate=0.001, initial_usd=1_000_000.0)
+    bot = Bot(cfg, ConstantTargets({"BTC/USD": 0.5}), ex, store, UNIVERSE, Journal(cfg.paths.journal, commit="t"))
+    bot.run_once(NOW)
+    assert store.deadline_seen is not None
+    assert store.deadline_seen() is True                          # a zero budget is immediately over
+
+
+def test_a_generous_budget_is_not_spent_during_the_cycle(tmp_path):
+    store = SlowStore(panel())
+    cfg = config(tmp_path, data_deadline_s=600.0)
+    ex = PaperExchange(lambda: dict(TICKER), RULES, cfg.paths.wallet, fee_rate=0.001, initial_usd=1_000_000.0)
+    bot = Bot(cfg, ConstantTargets({"BTC/USD": 0.5}), ex, store, UNIVERSE, Journal(cfg.paths.journal, commit="t"))
+    bot.run_once(NOW)
+    assert store.deadline_seen() is False
