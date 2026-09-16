@@ -1,0 +1,67 @@
+"""Bot configuration: one committed TOML per bot. Keys never live here — they come from the environment."""
+import datetime as dt
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+from ..strategy.momentum import MomentumParams
+
+TUPLE_FIELDS = ("lookbacks_h", "select_hours_utc", "volume_clip")
+
+
+@dataclass
+class Paths:
+    wallet: str
+    journal: str
+    memory: str
+    state: str
+
+
+@dataclass
+class Limits:
+    max_orders_per_cycle: int = 12
+    max_order_fraction: float = 0.4        # of equity, per order
+    data_max_lag_h: int = 2                # newest BTC bar must be at most this old
+    equity_jump_alert: float = 0.05        # unexplained equity move since last cycle -> hold + alert
+    ticker_max_age_s: int = 120
+
+
+@dataclass
+class BotConfig:
+    name: str
+    mode: str                              # trade | hold | liquidate — re-read every cycle
+    exchange: str                          # paper | roostoo
+    strategy: MomentumParams
+    fee_rate: float
+    min_trade_notional: float
+    lookback_days: int
+    competition_start: dt.date | None
+    competition_days: int
+    required_active_days: int
+    paths: Paths
+    limits: Limits
+    telegram: bool = False
+
+
+def load_config(path) -> BotConfig:
+    raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    strat = dict(raw.get("strategy", {}))
+    for key in TUPLE_FIELDS:
+        if key in strat and strat[key] is not None:
+            strat[key] = tuple(strat[key])
+    strat["pairs"] = tuple(raw["pairs"])
+    return BotConfig(
+        name=raw["name"],
+        mode=raw.get("mode", "trade"),
+        exchange=raw.get("exchange", "paper"),
+        strategy=MomentumParams(**strat),
+        fee_rate=float(raw.get("fee_rate", 0.001)),
+        min_trade_notional=float(raw.get("min_trade_notional", 50.0)),
+        lookback_days=int(raw.get("lookback_days", 60)),
+        competition_start=raw.get("competition_start"),
+        competition_days=int(raw.get("competition_days", 14)),
+        required_active_days=int(raw.get("required_active_days", 8)),
+        paths=Paths(**raw["paths"]),
+        limits=Limits(**raw.get("limits", {})),
+        telegram=bool(raw.get("telegram", False)),
+    )

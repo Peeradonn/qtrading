@@ -4,13 +4,13 @@ Fills at the decision hour's close (Roostoo's mock book shows bid == ask, so no 
 parameter). Fee on notional. Quantities floored to the pair's AmountPrecision; orders under MiniOrder or under a
 minimum trade notional are skipped; no trades on stale bars. Sells execute before buys so rotations fit in cash.
 """
-import math
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
 from ..data.store import Prices
+from ..execution import plan_orders
 from ..roostoo.models import PairInfo
 from ..strategy import State, Strategy
 
@@ -45,11 +45,6 @@ class Result:
     trades: list[Trade] = field(default_factory=list)
 
 
-def _floor(x: float, precision: int) -> float:
-    f = 10 ** precision
-    return math.floor(x * f + 1e-9) / f
-
-
 def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], config: SimConfig = SimConfig()) -> Result:
     close = prices.close
     pairs = list(close.columns)
@@ -58,7 +53,6 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
     S = prices.stale.to_numpy(dtype=bool)
     SIG = strategy.signals(prices).reindex(index=close.index)     # keep any extra columns (gates, vols) for targets()
     n = len(close)
-    slip = config.slippage_bps / 10_000
 
     cash = float(config.initial_cash)
     qty = np.zeros(len(pairs))
@@ -84,45 +78,24 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
                           cash=cash, equity=equity, peak_equity=peak, memory=memory)
             targets = strategy.targets(t, SIG.iloc[i], state) or {}
 
-            orders = []
-            # sorted: a set's iteration order varies per process, and with equal-sized orders the fill order
-            # decides which one is cash-constrained — results must not depend on PYTHONHASHSEED
-            for p in sorted(set(targets) | {p for p, j in col.items() if qty[j] > 0}):
-                j = col.get(p)
-                if j is None or np.isnan(px[j]) or S[i, j]:
-                    continue
-                delta = targets.get(p, 0.0) * equity - qty[j] * px[j]
-                if abs(delta) < config.min_trade_notional:
-                    continue
-                orders.append((p, j, delta))
-
+            prices_now = {p: px[j] for p, j in col.items()}
+            stale_now = {p for p, j in col.items() if S[i, j]}
+            holdings_now = {p: qty[j] for p, j in col.items() if qty[j] > 0}
+            orders = plan_orders(targets, holdings_now, prices_now, stale_now, cash, equity, rules,
+                                 config.fee_rate, config.min_trade_notional, config.slippage_bps)
             traded = 0.0
-            for p, j, delta in sorted(orders, key=lambda o: o[2]):          # sells (negative) first
-                prec, min_order = rules[p].amount_precision, rules[p].min_order
-                if delta < 0:
-                    fill = px[j] * (1 - slip)
-                    q = _floor(min(-delta / fill, qty[j]), prec)
-                    notional = q * fill
-                    if q <= 0 or notional < min_order:
-                        continue
-                    fee = notional * config.fee_rate
-                    cash += notional - fee
-                    qty[j] -= q
-                    if qty[j] < 10 ** -prec:                              # dust after flooring
+            for o in orders:
+                j = col[o.pair]
+                if o.side == "SELL":
+                    cash += o.notional - o.fee
+                    qty[j] -= o.quantity
+                    if qty[j] < 10 ** -rules[o.pair].amount_precision:          # dust after flooring
                         qty[j] = 0.0
-                    trades.append(Trade(t, p, "SELL", q, fill, notional, fee))
                 else:
-                    fill = px[j] * (1 + slip)
-                    affordable = cash / (fill * (1 + config.fee_rate))
-                    q = _floor(min(delta / fill, affordable), prec)
-                    notional = q * fill
-                    if q <= 0 or notional < min_order:
-                        continue
-                    fee = notional * config.fee_rate
-                    cash -= notional + fee
-                    qty[j] += q
-                    trades.append(Trade(t, p, "BUY", q, fill, notional, fee))
-                traded += notional
+                    cash -= o.notional + o.fee
+                    qty[j] += o.quantity
+                trades.append(Trade(t, o.pair, o.side, o.quantity, o.price, o.notional, o.fee))
+                traded += o.notional
 
             turnover_out[i] = traded / equity if equity > 0 else 0.0
             value = np.where(np.isnan(px), 0.0, qty * px)
