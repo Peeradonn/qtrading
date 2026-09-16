@@ -58,3 +58,31 @@ def test_base_url_defaults_to_none_and_can_be_overridden(tmp_path):
     p2 = tmp_path / "b.toml"
     p2.write_text(SAMPLE.replace('exchange = "paper"', 'exchange = "roostoo"\nbase_url = "http://127.0.0.1:8787"'))
     assert load_config(p2).base_url == "http://127.0.0.1:8787"
+
+
+def test_shipped_configs_select_at_midnight_utc_whenever_the_bot_starts():
+    """The backtest and the out-of-sample test select at 00:00 UTC. A bot first started at 05:31 must still select
+    at 00:00 thereafter -- counting 24 hours from start-up would silently move the live schedule to 05:31."""
+    import pandas as pd
+    from pathlib import Path
+
+    from qtrading.strategy import State
+    from qtrading.strategy.momentum import Momentum
+
+    root = Path(__file__).resolve().parents[1]
+    for name in ("core", "riskon", "paper-core", "mock-core"):
+        strat = Momentum(load_config(root / "configs" / f"{name}.toml").strategy)
+        row = pd.Series({("score", "A"): 2.0, ("score", "B"): 1.0, ("vol", "A"): 0.01, ("vol", "B"): 0.01,
+                         ("gate", "MARKET"): 1.0})
+        mem = {}
+        state = State(holdings={}, weights={}, cash=1.0, equity=1.0, peak_equity=1.0, memory=mem)
+        start = pd.Timestamp("2026-09-16 05:31", tz="UTC")
+        strat.targets(start, row, state)                                   # first call always selects
+        selections = []
+        for hour in range(1, 48):
+            t = start.floor("h") + pd.Timedelta(hours=hour)
+            before = mem["last_select"]
+            strat.targets(t, row, state)
+            if mem["last_select"] != before:
+                selections.append(t.hour)
+        assert selections == [0, 0], f"{name} re-selected at hours {selections}"
