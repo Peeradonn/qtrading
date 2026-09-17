@@ -17,7 +17,10 @@ is the full decision log and research history.
 14-day returns divided by their own volatility. Once a day, hold the top 6, keeping a holding while it stays in
 the top 12. Weight them equally and scale the whole book so estimated portfolio volatility is 3% a day; the rest is
 cash. Rebalance only when a holding drifts more than 5 points from target. No regime switches, no machine learning.
-The fallback core weights by inverse volatility at a 2% target: shallower tails, less of a rally. In-sample the
+The fallback core weights by inverse volatility at a 2% target: shallower tails, less of a rally. The rules allow a 1x short, and both uses of it went through the harness (whitepaper §7). A BTC hedge improves nothing
+the competition scores. A short leg on the ranking's losers is different: it loses money on its own, yet as a
+quarter of the book it roughly doubles the ratios and cuts the tails, at some cost in rally rank. It is not in the
+book because it rests on exchange mechanics the API documents do not describe and we have not yet been able to test. In-sample the
 entry beats BTC on median, ratios and total and cuts its worst fortnight from −30% to −23%; the core halves BTC's
 tails and triples its total, and did the same out of sample.
 
