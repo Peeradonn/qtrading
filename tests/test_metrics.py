@@ -83,3 +83,18 @@ def test_active_days_counts_distinct_utc_days_with_a_trade_inside_each_window():
     starts = pd.DatetimeIndex([pd.Timestamp("2026-09-01", tz="UTC"), pd.Timestamp("2026-09-02", tz="UTC")])
     s = active_days_per_window(trades, starts, window_days=3)
     assert list(s) == [2, 1]          # [day0, day3): days {0, 1}; [day1, day4): day 1 only — day 4 is outside
+
+
+# --- Screen 2 is a rank: share of hold-one-coin competitors a window return beats ------------------------
+
+def test_field_beaten_counts_the_single_coin_holders_a_window_return_beats():
+    from qtrading.backtest.metrics import field_beaten
+    idx = pd.date_range("2026-09-01", periods=4 * 24, freq="1h", tz="UTC")
+    day = (idx.hour == 0).cumsum() - 1                      # 0,0,...,1,1,...,3
+    # 00:00 closes: A +10%/day, B -10%/day, C flat, D never priced (excluded from the field)
+    close = pd.DataFrame({"A": 100 * 1.1 ** day, "B": 100 * 0.9 ** day, "C": 100.0, "D": math.nan}, index=idx)
+    ret = pd.Series([0.05, 0.30], index=idx[[0, 24]])       # the strategy's 2-day window returns from day 0 and day 1
+    fb = field_beaten(ret, close, ["A", "B", "C", "D"], window_days=2)
+    # each 2-day window: A +21%, B -19%, C 0%. +5% beats B and C (2 of 3); +30% beats all three.
+    assert list(fb.index) == [idx[0], idx[24]]
+    assert list(fb) == [pytest.approx(2 / 3), pytest.approx(1.0)]

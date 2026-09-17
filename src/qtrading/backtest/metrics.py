@@ -61,3 +61,14 @@ def active_days_per_window(trades, window_starts: pd.DatetimeIndex, window_days:
         stop = start + pd.Timedelta(days=window_days)
         counts.append(int(((days >= start) & (days < stop)).sum()))
     return pd.Series(counts, index=window_starts, name="active_days")
+
+
+def field_beaten(window_ret: pd.Series, close: pd.DataFrame, pairs, window_days: int = 14,
+                 sample_hour: int = 0) -> pd.Series:
+    """Screen 2 is a rank, so: per window start, the share of hold-one-coin competitors (one per pair in ``pairs``)
+    whose return over the same window the strategy beat. A pair without a price at both ends of a window is not
+    part of that window's field."""
+    daily = close[close.index.hour == sample_hour].reindex(columns=list(pairs))
+    field = (daily.shift(-window_days) / daily - 1).reindex(window_ret.index)
+    beaten = field.lt(window_ret, axis=0) & field.notna()
+    return beaten.sum(axis=1) / field.notna().sum(axis=1)

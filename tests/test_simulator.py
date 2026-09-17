@@ -169,3 +169,22 @@ def test_turnover_is_notional_traded_over_equity():
     res = run(prices, FixedTargets({0: {"A/USD": 0.5}}), initial_cash=1000.0, fee_rate=0.0, min_trade_notional=0.0)
     assert res.turnover.iloc[0] == pytest.approx(499.998 / 1000.0)
     assert res.turnover.iloc[1] == 0.0
+
+
+# --- shorts: a negative quantity valued at price, opened and covered like any other order ----------------
+
+# hour 0 @10: sell 50 short -> cash 1000 + 500 - 0.5 = 1499.5, equity 1499.5 - 500 = 999.5
+# hour 1 @12: cover 50 -> cost 600 + 0.6 -> cash 898.9, equity 898.9 (the short lost 100 plus two fees)
+def test_short_position_is_valued_at_price_and_covered_by_a_buy():
+    prices = panel({"A/USD": [10.0, 12.0, 12.0]})
+    res = run(prices, FixedTargets({0: {"A/USD": -0.5}, 1: {}}), initial_cash=1000.0, allow_short=True,
+              min_trade_notional=0.0)
+    assert res.holdings["A/USD"].iloc[0] == pytest.approx(-50.0)
+    assert list(res.equity.round(6)) == [999.5, 898.9, 898.9]
+    assert [(t.side, t.quantity) for t in res.trades] == [("SELL", 50.0), ("BUY", 50.0)]
+
+
+def test_shorts_are_refused_unless_the_config_allows_them():
+    prices = panel({"A/USD": [10.0, 12.0, 12.0]})
+    res = run(prices, FixedTargets({0: {"A/USD": -0.5}}), initial_cash=1000.0, min_trade_notional=0.0)
+    assert res.trades == [] and list(res.equity) == [1000.0, 1000.0, 1000.0]

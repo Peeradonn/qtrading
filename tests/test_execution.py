@@ -36,3 +36,19 @@ def test_nan_price_stale_pair_and_unknown_pair_are_skipped():
                          prices={"A/USD": math.nan, "B/USD": 10.0, "C/USD": 10.0}, stale={"B/USD"}, cash=1000.0,
                          equity=1000.0, rules=rules(["A/USD", "B/USD"]), fee_rate=0.001, min_trade_notional=0.0)
     assert orders == []
+
+
+# --- shorts: only when the caller says so; the live engine never does ------------------------------------
+
+def test_a_short_sale_beyond_holdings_needs_allow_short():
+    kw = dict(targets={"A/USD": -0.5}, holdings={}, prices={"A/USD": 10.0}, stale=set(), cash=1000.0, equity=1000.0,
+              rules=rules(["A/USD"]), fee_rate=0.001, min_trade_notional=0.0)
+    assert plan_orders(**kw) == []                                   # default: nothing to sell, nothing planned
+    (sell,) = plan_orders(**kw, allow_short=True)
+    assert (sell.side, sell.quantity, sell.notional, sell.fee) == ("SELL", 50.0, 500.0, pytest.approx(0.5))
+
+
+def test_covering_a_short_is_a_buy_funded_from_cash():
+    (buy,) = plan_orders(targets={}, holdings={"A/USD": -50.0}, prices={"A/USD": 12.0}, stale=set(), cash=1500.0,
+                         equity=900.0, rules=rules(["A/USD"]), fee_rate=0.001, min_trade_notional=0.0, allow_short=True)
+    assert (buy.side, buy.quantity, buy.notional) == ("BUY", 50.0, 600.0)

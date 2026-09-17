@@ -22,6 +22,7 @@ class SimConfig:
     slippage_bps: float = 0.0
     decision_every_h: int = 1
     min_trade_notional: float = 50.0    # don't model dust trades we would never place
+    allow_short: bool = False           # let plan_orders sell more than is held (negative quantity = short)
 
 
 @dataclass(frozen=True)
@@ -73,23 +74,24 @@ def simulate(prices: Prices, strategy: Strategy, rules: dict[str, PairInfo], con
 
         if i % config.decision_every_h == 0:
             peak = max(peak, equity)
-            state = State(holdings={p: qty[j] for p, j in col.items() if qty[j] > 0},
-                          weights={p: value[j] / equity for p, j in col.items() if qty[j] > 0},
+            state = State(holdings={p: qty[j] for p, j in col.items() if qty[j] != 0},
+                          weights={p: value[j] / equity for p, j in col.items() if qty[j] != 0},
                           cash=cash, equity=equity, peak_equity=peak, memory=memory)
             targets = strategy.targets(t, SIG.iloc[i], state) or {}
 
             prices_now = {p: px[j] for p, j in col.items()}
             stale_now = {p for p, j in col.items() if S[i, j]}
-            holdings_now = {p: qty[j] for p, j in col.items() if qty[j] > 0}
+            holdings_now = {p: qty[j] for p, j in col.items() if qty[j] != 0}
             orders = plan_orders(targets, holdings_now, prices_now, stale_now, cash, equity, rules,
-                                 config.fee_rate, config.min_trade_notional, config.slippage_bps)
+                                 config.fee_rate, config.min_trade_notional, config.slippage_bps,
+                                 allow_short=config.allow_short)
             traded = 0.0
             for o in orders:
                 j = col[o.pair]
                 if o.side == "SELL":
                     cash += o.notional - o.fee
                     qty[j] -= o.quantity
-                    if qty[j] < 10 ** -rules[o.pair].amount_precision:          # dust after flooring
+                    if abs(qty[j]) < 10 ** -rules[o.pair].amount_precision:     # dust after flooring
                         qty[j] = 0.0
                 else:
                     cash -= o.notional + o.fee

@@ -292,3 +292,135 @@ def test_ewma_volatility_reacts_faster_to_a_volatility_spike():
     trailing = Momentum(MomentumParams(**kw)).signals(prices)[("vol", "A/USD")].iloc[-1]
     ewma = Momentum(MomentumParams(vol_model="ewma", ewma_lambda=0.99, **kw)).signals(prices)[("vol", "A/USD")].iloc[-1]
     assert ewma > trailing
+
+
+# --- sleeve: idle cash held in a permanent low-correlation asset (gold) -----------------------------------
+# The crypto book is untouched; the sleeve only changes what happens to cash the vol target leaves idle.
+
+def test_sleeve_pair_is_never_ranked_but_keeps_its_vol():
+    prices = panel({"BTC/USD": [100, 102, 101, 104, 103], "PAXG/USD": [50, 51, 52, 53, 54]})
+    sig = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=3, min_age_h=0, gate_ma_h=2,
+                                  sleeve=("PAXG/USD",))).signals(prices)
+    assert math.isnan(sig[("score", "PAXG/USD")].iloc[4])
+    assert sig[("vol", "PAXG/USD")].iloc[4] > 0
+    assert not math.isnan(sig[("score", "BTC/USD")].iloc[4])
+
+
+def test_sleeve_pair_must_be_in_the_selectable_universe():
+    prices = panel({"A/USD": [1, 2, 3], "PAXG/USD": [1, 1, 1]})
+    with pytest.raises(ValueError, match="PAXG/USD"):
+        Momentum(MomentumParams(pairs=("A/USD",), sleeve=("PAXG/USD",))).signals(prices)
+
+
+# one of two slots filled -> crypto exposure 0.5; the sleeve takes the idle half
+def test_cash_sleeve_takes_the_idle_cash_and_leaves_the_crypto_book_unchanged():
+    row = sig_row({"A": 2.0, "PAXG": float("nan")}, vols={"A": 0.01, "PAXG": 0.002})
+    plain = Momentum(MomentumParams(k=2, buffer_rank=2)).targets(ts(0), row, state())
+    sleeved = Momentum(MomentumParams(k=2, buffer_rank=2, sleeve=("PAXG",))).targets(ts(0), row, state())
+    assert plain == {"A": pytest.approx(0.5)}
+    assert sleeved == {"A": pytest.approx(0.5), "PAXG": pytest.approx(0.5)}
+
+
+def test_sleeve_pair_is_excluded_from_selection_even_with_a_high_score():
+    row = sig_row({"A": 2.0, "B": 1.0, "PAXG": 9.0}, vols={"A": 0.01, "B": 0.01, "PAXG": 0.002})
+    t = Momentum(MomentumParams(k=2, buffer_rank=2, max_exposure=0.6, sleeve=("PAXG",))).targets(ts(0), row, state())
+    assert t == {"A": pytest.approx(0.3), "B": pytest.approx(0.3), "PAXG": pytest.approx(0.4)}
+
+
+def test_cash_sleeve_fraction_scales_how_much_idle_cash_it_takes():
+    row = sig_row({"A": 2.0, "B": 1.0, "PAXG": float("nan")}, vols={"A": 0.01, "B": 0.01, "PAXG": 0.002})
+    strat = Momentum(MomentumParams(k=2, max_exposure=0.6, sleeve=("PAXG",), sleeve_fraction=0.5))
+    assert strat.targets(ts(0), row, state()) == {"A": pytest.approx(0.3), "B": pytest.approx(0.3), "PAXG": pytest.approx(0.2)}
+
+
+def test_sleeve_holds_when_nothing_is_selected_and_stays_in_cash_without_a_live_vol():
+    strat = Momentum(MomentumParams(k=2, sleeve=("PAXG",)))
+    nothing = sig_row({"PAXG": float("nan")}, vols={"PAXG": 0.002})                  # no crypto has a score
+    assert strat.targets(ts(0), nothing, state()) == {"PAXG": pytest.approx(1.0)}
+    no_vol = sig_row({"A": 2.0, "PAXG": float("nan")}, vols={"A": 0.01, "PAXG": float("nan")})
+    assert strat.targets(ts(0), no_vol, state()) == {"A": pytest.approx(0.5)}
+
+
+def test_drift_band_applies_to_the_sleeve_too():
+    row = sig_row({"A": 2.0, "PAXG": float("nan")}, vols={"A": 0.01, "PAXG": 0.002})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, sleeve=("PAXG",), drift_band=0.05))
+    t = strat.targets(ts(0), row, state(holdings={"A": 1.0, "PAXG": 1.0}, weights={"A": 0.5, "PAXG": 0.47}))
+    assert t == {"A": pytest.approx(0.5), "PAXG": pytest.approx(0.47)}
+
+
+# book mode: the sleeve is one more inverse-vol position and the vol target treats it as uncorrelated with the book.
+# A 4%/day, PAXG 1%/day, k=1 -> inverse-vol weights A 0.2, PAXG 0.8; portfolio vol = sqrt((0.2*0.04)^2 + (0.8*0.01)^2)
+# = 0.011314. Target 2% -> exposure capped at 1. Target 0.5% -> exposure 0.44194 -> A 0.088388, PAXG 0.353553.
+def test_book_sleeve_is_an_inverse_vol_position_treated_as_uncorrelated_by_the_vol_target():
+    hv_a, hv_g = 0.04 / math.sqrt(24), 0.01 / math.sqrt(24)
+    row = sig_row({"A": 2.0, "PAXG": float("nan")}, vols={"A": hv_a, "PAXG": hv_g})
+    p = dict(k=1, buffer_rank=1, weighting="inverse_vol", sleeve=("PAXG",), sleeve_mode="book", avg_corr=1.0)
+    full = Momentum(MomentumParams(vol_target_daily=0.02, **p)).targets(ts(0), row, state())
+    assert full == {"A": pytest.approx(0.2), "PAXG": pytest.approx(0.8)}
+    scaled = Momentum(MomentumParams(vol_target_daily=0.005, **p)).targets(ts(0), row, state())
+    assert scaled == {"A": pytest.approx(0.088388, rel=1e-4), "PAXG": pytest.approx(0.353553, rel=1e-4)}
+
+
+# --- hedge: a short in one pair sized off the long book, gross exposure capped ------------------------------
+
+# A and B selected at 0.5 each; hedge 0.5 x long notional -> BTC -0.5; gross 1.5 > 1 -> everything x 2/3
+def test_hedge_shorts_the_hedge_pair_in_proportion_to_the_long_book_and_caps_gross_exposure():
+    row = sig_row({"A": 2.0, "B": 1.0, "BTC": -5.0}, vols={"A": 0.01, "B": 0.01, "BTC": 0.01})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, hedge_pair="BTC", hedge_ratio=0.5))
+    t = strat.targets(ts(0), row, state())
+    assert t == {"A": pytest.approx(1 / 3), "B": pytest.approx(1 / 3), "BTC": pytest.approx(-1 / 3)}
+
+
+def test_hedge_nets_against_a_long_position_in_the_hedge_pair():
+    row = sig_row({"BTC": 2.0, "A": 1.0, "B": -1.0}, vols={"A": 0.01, "B": 0.01, "BTC": 0.01})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, hedge_pair="BTC", hedge_ratio=0.5))
+    t = strat.targets(ts(0), row, state())
+    assert t == {"BTC": pytest.approx(0.0), "A": pytest.approx(0.5)}       # 0.5 long - 0.5 hedge, gross 0.5
+
+
+def test_hedge_is_skipped_without_a_live_vol_for_the_hedge_pair():
+    row = sig_row({"A": 2.0, "B": 1.0, "BTC": float("nan")}, vols={"A": 0.01, "B": 0.01, "BTC": float("nan")})
+    t = Momentum(MomentumParams(k=2, buffer_rank=2, hedge_pair="BTC", hedge_ratio=0.5)).targets(ts(0), row, state())
+    assert t == {"A": pytest.approx(0.5), "B": pytest.approx(0.5)}
+
+
+def test_drift_band_applies_to_a_short_holding():
+    row = sig_row({"A": 2.0, "B": 1.0, "BTC": -5.0}, vols={"A": 0.01, "B": 0.01, "BTC": 0.01})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, hedge_pair="BTC", hedge_ratio=0.5, drift_band=0.05))
+    held = state(holdings={"A": 1.0, "B": 1.0, "BTC": -1.0}, weights={"A": 1 / 3, "B": 1 / 3, "BTC": -0.31})
+    assert strat.targets(ts(0), row, held) == {"A": pytest.approx(1 / 3), "B": pytest.approx(1 / 3), "BTC": pytest.approx(-0.31)}
+
+
+# --- exposure policy: downside-only volatility targeting, and a floor on exposure ---------------------------
+
+# an asset that only ever rises has zero downside deviation: downside targeting leaves it fully invested where
+# total-vol targeting would cut it
+def test_downside_vol_targeting_ignores_upside_volatility():
+    up_only = [100.0 * math.exp(sum(0.01 + 0.08 * (j % 2) for j in range(i))) for i in range(40)]   # +1%, +9%, +1%, ...
+    prices = panel({"A/USD": up_only})                                    # volatile, but never down
+    kw = dict(k=1, buffer_rank=1, lookbacks_h=(1,), skip_h=0, vol_window_h=6, min_age_h=0, vol_target_daily=0.02)
+    total = Momentum(MomentumParams(**kw))
+    down = Momentum(MomentumParams(**kw, vol_target_on="downside"))
+    row_t, row_d = total.signals(prices).iloc[-1], down.signals(prices).iloc[-1]
+    assert ("dvol", "A/USD") in down.signals(prices).columns
+    assert row_d[("dvol", "A/USD")] == pytest.approx(0.0)
+    assert total.targets(ts(39), row_t, state())["A/USD"] < 0.2               # 5%/h vol -> heavily cut
+    assert down.targets(ts(39), row_d, state())["A/USD"] == pytest.approx(1.0)
+
+
+# symmetric moves: downside deviation x sqrt(2) equals total volatility, so the two rules agree
+def test_downside_deviation_is_scaled_to_match_total_vol_for_symmetric_returns():
+    zigzag = [100.0 * math.exp(0.02 * (-1) ** i) for i in range(400)]
+    prices = panel({"A/USD": zigzag})
+    kw = dict(lookbacks_h=(1,), skip_h=0, vol_window_h=168, min_age_h=0, vol_model="ewma", ewma_lambda=0.99)
+    row = Momentum(MomentumParams(**kw, vol_target_on="downside")).signals(prices).iloc[-1]
+    assert row[("dvol", "A/USD")] == pytest.approx(row[("vol", "A/USD")], rel=0.05)
+
+
+def test_exposure_floor_bounds_the_vol_target_from_below():
+    hv = 0.04 / math.sqrt(24)
+    row = sig_row({"A": 2.0, "B": 1.0}, vols={"A": hv, "B": hv})
+    cut = Momentum(MomentumParams(k=2, vol_target_daily=0.02, avg_corr=1.0)).targets(ts(0), row, state())
+    assert cut == {"A": pytest.approx(0.25), "B": pytest.approx(0.25)}
+    floored = Momentum(MomentumParams(k=2, vol_target_daily=0.02, avg_corr=1.0, min_exposure=0.8)).targets(ts(0), row, state())
+    assert floored == {"A": pytest.approx(0.4), "B": pytest.approx(0.4)}

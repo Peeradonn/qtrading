@@ -4,6 +4,10 @@ Given target weights and the current book, produce the market orders to place, i
 sells first (largest first) so their proceeds fund the buys; quantities floored to the pair's AmountPrecision;
 anything under MiniOrder or under the minimum trade notional is skipped; buys are capped by cash net of fees;
 no orders for pairs with a missing/NaN price, a stale bar, or no exchange rules.
+
+Shorts: a negative target is a short position. Selling more than is held is planned only when ``allow_short``
+is set (the backtester's flag for the hedge study); the live engine never sets it, so a negative target there
+sells at most what is held. A negative holding with no target is covered with a BUY.
 """
 import math
 from dataclasses import dataclass
@@ -28,10 +32,11 @@ def floor_to(x: float, precision: int) -> float:
 
 def plan_orders(targets: dict[str, float], holdings: dict[str, float], prices: dict[str, float], stale,
                 cash: float, equity: float, rules: dict[str, PairInfo], fee_rate: float,
-                min_trade_notional: float, slippage_bps: float = 0.0) -> list[PlannedOrder]:
+                min_trade_notional: float, slippage_bps: float = 0.0,
+                allow_short: bool = False) -> list[PlannedOrder]:
     slip = slippage_bps / 10_000
     deltas = []
-    for pair in sorted(set(targets) | {p for p, q in holdings.items() if q > 0}):
+    for pair in sorted(set(targets) | {p for p, q in holdings.items() if q != 0}):
         px = prices.get(pair)
         if px is None or math.isnan(px) or px <= 0 or pair in stale or pair not in rules:
             continue
@@ -45,7 +50,8 @@ def plan_orders(targets: dict[str, float], holdings: dict[str, float], prices: d
         r, px = rules[pair], prices[pair]
         if delta < 0:
             fill = px * (1 - slip)
-            q = floor_to(min(-delta / fill, holdings.get(pair, 0.0)), r.amount_precision)
+            sellable = -delta / fill if allow_short else min(-delta / fill, holdings.get(pair, 0.0))
+            q = floor_to(sellable, r.amount_precision)
             notional = q * fill
             if q <= 0 or notional < r.min_order:
                 continue

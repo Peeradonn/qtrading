@@ -4,7 +4,8 @@ signals: per asset, the mean over lookbacks of (return over L hours, skipping th
          optionally blended with the residual (BTC-beta-neutral) version, scaled by a volume-confirmation multiplier,
          and masked where perpetual funding says the trade is crowded. Plus each asset's vol and a banded market gate.
          Causal operations only.
-targets: eligibility -> gate -> hysteresis -> weights -> exposure (vol target, drawdown brake) -> drift band.
+targets: eligibility -> gate -> hysteresis -> weights -> exposure (vol target, drawdown brake) -> sleeve -> hedge
+         -> drift band.
 """
 from dataclasses import dataclass
 
@@ -45,12 +46,21 @@ class MomentumParams:
     funding_max: float | None = None            # drop assets whose mean funding over funding_window_h exceeds this
     funding_window_h: int = 72
     vol_target_daily: float | None = None       # e.g. 0.03; None = no scaling
+    vol_target_on: str = "total"                # "total" | "downside": size the book on downside deviation only
+    min_exposure: float = 0.0                   # floor on the exposure scalar once anything is selected
     avg_corr: float = 0.7                       # constant-correlation model for portfolio vol
     dd_halve: float | None = None               # drawdown from peak at which exposure halves
     dd_flat: float | None = None                # drawdown from peak at which we go to cash
     dd_cooldown_h: int = 48                     # stay flat this long, then reset the peak and resume
     drift_band: float = 0.05                    # do not touch a holding within this of its target
     max_exposure: float = 1.0
+    sleeve: tuple[str, ...] = ()                # pairs held by rule rather than by rank (e.g. gold); never selected
+    sleeve_mode: str = "cash"                   # "cash": the sleeve takes the idle cash the vol target leaves;
+                                                #   "book": one more inverse-vol position, uncorrelated with the book
+    sleeve_fraction: float = 1.0                # cash mode: share of the idle cash placed in the sleeve
+    hedge_pair: str | None = None               # short this pair against the long book (needs a venue that shorts)
+    hedge_ratio: float = 0.0                    # short notional as a fraction of the long notional
+    max_gross: float = 1.0                      # longs + |shorts| as a fraction of equity (the rules' 1x)
 
 
 def market_gate(close: pd.Series, ma_h: int, band: float) -> pd.Series:
@@ -74,7 +84,9 @@ class Momentum:
         if p.vol_model != "trailing":
             bits.append(f"{p.vol_model}{p.ewma_lambda:g}")
         if p.vol_target_daily:
-            bits.append(f"vt{p.vol_target_daily:g}")
+            bits.append(f"vt{p.vol_target_daily:g}" + ("d" if p.vol_target_on == "downside" else ""))
+        if p.min_exposure:
+            bits.append(f"floor{p.min_exposure:g}")
         if p.dd_halve or p.dd_flat:
             bits.append(f"dd{p.dd_halve:g}/{p.dd_flat:g}")
         if p.select_hours_utc is not None:
@@ -83,6 +95,10 @@ class Momentum:
             bits.append(f"h{p.select_hour_utc}")
         elif p.select_every_h != 1:
             bits.append(f"s{p.select_every_h}")
+        if p.sleeve:
+            bits.append("sl:" + "+".join(q.split("/")[0] for q in p.sleeve) + f":{p.sleeve_mode}{p.sleeve_fraction:g}")
+        if p.hedge_pair and p.hedge_ratio:
+            bits.append(f"hg:{p.hedge_pair.split('/')[0]}{p.hedge_ratio:g}")
         return ":".join(bits)
 
     # ---- signals ------------------------------------------------------------
@@ -92,6 +108,9 @@ class Momentum:
         all_pairs = list(prices.close.columns)
         cols = [c for c in all_pairs if p.pairs is None or c in p.pairs]
         close = prices.close[cols]
+        missing = [q for q in p.sleeve if q not in cols]
+        if missing:
+            raise ValueError(f"sleeve pairs must be in the selectable universe: {missing}")
 
         # hourly log returns on live bars only: a carried-forward price is not a zero-return observation
         logret = np.log(close).diff().where(~prices.stale[cols])
@@ -103,6 +122,13 @@ class Momentum:
             vol = np.sqrt((logret ** 2).ewm(alpha=1 - p.ewma_lambda, min_periods=warmup).mean())
         else:
             vol = logret.rolling(p.vol_window_h, min_periods=warmup).std()
+
+        # downside deviation on the same clock, scaled by sqrt(2) so symmetric returns give the total vol back
+        neg = logret.clip(upper=0.0)
+        if p.vol_model == "ewma":
+            dvol = np.sqrt(2.0 * (neg ** 2).ewm(alpha=1 - p.ewma_lambda, min_periods=warmup).mean())
+        else:
+            dvol = np.sqrt(2.0 * (neg ** 2).rolling(p.vol_window_h, min_periods=warmup).mean())
 
         raw = self._horizon_mean(lambda L: close.shift(p.skip_h) / close.shift(p.skip_h + L) - 1, vol)
         composite = raw
@@ -135,8 +161,11 @@ class Momentum:
 
         composite = composite.replace([np.inf, -np.inf], np.nan)
         composite = composite.where(eligible_mask(prices, p.min_age_h)[cols])
+        if p.sleeve:
+            composite[list(p.sleeve)] = np.nan                                 # held by rule, never by rank
 
-        out = pd.concat({"score": composite.reindex(columns=all_pairs), "vol": vol.reindex(columns=all_pairs)}, axis=1)
+        out = pd.concat({"score": composite.reindex(columns=all_pairs), "vol": vol.reindex(columns=all_pairs),
+                         "dvol": dvol.reindex(columns=all_pairs)}, axis=1)
         if p.gate_pair in prices.close.columns:
             out[("gate", "MARKET")] = market_gate(prices.close[p.gate_pair], p.gate_ma_h, p.gate_band)
         elif p.gate in ("market", "both"):
@@ -185,39 +214,61 @@ class Momentum:
             mem["selected"], mem["last_select"] = chosen, t
         else:
             chosen = [c for c in mem.get("selected", []) if not np.isnan(s["vol"].get(c, np.nan))]
-        if not chosen:
+        # --- weights and exposure -------------------------------------------
+        sleeve = [q for q in p.sleeve if not np.isnan(s["vol"].get(q, np.nan))]   # needs a live vol to be held
+        in_book = sleeve if p.sleeve_mode == "book" else []
+        book = chosen + in_book
+        weights = pd.Series(dtype=float)
+        if book:
+            slots = p.k + len(in_book)
+            total = len(book) / slots                              # unfilled slots stay in cash
+            if p.weighting == "inverse_vol":
+                inv = 1.0 / s["vol"].reindex(book)
+                weights = inv / inv.sum() * total
+            else:
+                weights = pd.Series(1.0 / slots, index=book)
+
+            exposure = p.max_exposure
+            if p.vol_target_daily:
+                sizing_vol = s["dvol"] if p.vol_target_on == "downside" and "dvol" in s else s["vol"]
+                wv = weights * sizing_vol.reindex(book).fillna(s["vol"].reindex(book)) * np.sqrt(HOURS_PER_DAY)
+                core_wv = wv.reindex(chosen)                       # constant correlation inside the crypto book...
+                var = (1 - p.avg_corr) * (core_wv ** 2).sum() + p.avg_corr * core_wv.sum() ** 2
+                var += (wv.reindex(in_book) ** 2).sum()            # ...and the sleeve uncorrelated with it
+                port_vol = np.sqrt(var)
+                if port_vol > 0:
+                    exposure = min(exposure, p.vol_target_daily / port_vol)
+            if p.dd_halve is not None and drawdown >= p.dd_halve:
+                exposure *= 0.5
+            exposure = max(exposure, min(p.min_exposure, p.max_exposure))
+            weights = weights * exposure
+
+        if sleeve and p.sleeve_mode == "cash":                     # idle cash is held in the sleeve, not in USD
+            idle = max(0.0, 1.0 - float(weights.sum())) * p.sleeve_fraction
+            extra = pd.Series(idle / len(sleeve), index=sleeve)
+            weights = extra if weights.empty else pd.concat([weights, extra])
+        if weights.empty:
             return {}
 
-        total = len(chosen) / p.k                                  # unfilled slots stay in cash
-        if p.weighting == "inverse_vol":
-            inv = 1.0 / s["vol"].reindex(chosen)
-            weights = inv / inv.sum() * total
-        else:
-            weights = pd.Series(1.0 / p.k, index=chosen)
-
-        exposure = p.max_exposure
-        if p.vol_target_daily:
-            daily_vol = s["vol"].reindex(chosen) * np.sqrt(HOURS_PER_DAY)
-            wv = weights * daily_vol
-            port_vol = np.sqrt((1 - p.avg_corr) * (wv ** 2).sum() + p.avg_corr * wv.sum() ** 2)
-            if port_vol > 0:
-                exposure = min(exposure, p.vol_target_daily / port_vol)
-        if p.dd_halve is not None and drawdown >= p.dd_halve:
-            exposure *= 0.5
-        weights = weights * exposure
+        if p.hedge_pair and p.hedge_ratio > 0 and not np.isnan(s["vol"].get(p.hedge_pair, np.nan)):
+            short = p.hedge_ratio * weights[weights > 0].sum()          # sized off the long notional
+            weights[p.hedge_pair] = weights.get(p.hedge_pair, 0.0) - short   # nets against a long in the same pair
+            gross = weights.abs().sum()
+            if gross > p.max_gross:                                    # the 1x rule: scale the whole book
+                weights = weights * (p.max_gross / gross)
 
         # the engine sets force_rebalance for one cycle when the active-days pace is at risk
         band = 0.0 if mem.pop("force_rebalance", False) else p.drift_band
         out = {}
         for pair, w in weights.items():
             current = state.weights.get(pair, 0.0)
-            out[pair] = current if current > 0 and abs(w - current) < band else float(w)
+            out[pair] = current if current != 0 and abs(w - current) < band else float(w)
         return out
 
     def _select(self, s: pd.Series, state: State) -> list[str]:
         """Rank by score; keep current holdings while they stay inside the buffer; fill from the top."""
         p = self.params
-        score = s["score"].dropna()
+        score = s["score"].drop(labels=[q for q in p.sleeve if q in s["score"].index]).dropna()
         if p.gate in ("own", "both"):
             score = score[score > 0]
         if score.empty:
