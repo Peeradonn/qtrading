@@ -73,7 +73,7 @@ def build(config_path: Path):
         public = RoostooClient(api_key="", secret_key="", base_url=base_url)
         rules = {p: PairInfo.from_payload(p, d) for p, d in snapshot["TradePairs"].items()}
         exchange = PaperExchange(lambda: {p: t.last for p, t in public.ticker().items()}, rules, cfg.paths.wallet,
-                                 fee_rate=cfg.fee_rate)
+                                 fee_rate=cfg.fee_rate, allow_short=cfg.allow_short)
     elif cfg.exchange == "roostoo":
         key = os.environ[f"ROOSTOO_API_KEY{cfg.key_suffix}"]
         secret = os.environ[f"ROOSTOO_SECRET_KEY{cfg.key_suffix}"]

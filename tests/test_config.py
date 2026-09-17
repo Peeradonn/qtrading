@@ -95,3 +95,12 @@ def test_each_bot_can_have_its_own_price_cache(tmp_path):
     own = tmp_path / 'own.toml'
     own.write_text(SAMPLE.replace('[limits]', 'cache = "data/cache-own"' + chr(10) + '[limits]'), encoding='utf-8')
     assert load_config(own).paths.cache == 'data/cache-own'
+
+
+def test_shorting_is_off_unless_the_config_turns_it_on(tmp_path):
+    base = tmp_path / 'base.toml'
+    base.write_text(SAMPLE, encoding='utf-8')
+    assert load_config(base).allow_short is False
+    on = tmp_path / 'on.toml'
+    on.write_text(SAMPLE.replace('exchange = "paper"', 'exchange = "paper"' + chr(10) + 'allow_short = true'), encoding='utf-8')
+    assert load_config(on).allow_short is True

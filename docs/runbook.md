@@ -51,6 +51,16 @@ buys the book from cash, which satisfies the first-trade deadline on its own.
 - Do not change the strategy parameters during the competition. The whitepaper declares them; the journal proves
   they were used.
 
+## The short leg (only if adopted)
+
+`configs/paper-ls25.toml` is the entry with a short leg on the ranking's losers. It is a paper bot until the test
+account proves the mechanics the backtest assumes. The check, to run once when the test keys arrive: sell a small
+quantity of an alt the account does not hold, then read `/v3/balance`. Adopt only if the order fills, the balance
+goes negative, portfolio value moves one-for-one with the price, nothing is charged for holding it for a day, a
+BUY closes it, and the 1x limit rejects new exposure instead of liquidating. If any of those fails, the entry
+stays long-only and nothing else changes. If all hold, the competition config is `eqvt3.toml` plus the
+`allow_short` line and the five short-leg lines from the paper config, committed before the 30th.
+
 ## Day one (September 30)
 
 1. Official keys into `.env`; `sudo systemctl restart qtrading`.

@@ -106,7 +106,8 @@ class Bot:
         balances = self.exchange.balances()
         rules = self.exchange.rules()
         memory = load_memory(cfg.paths.memory)
-        state = reconcile(balances, tickers, self._pairs, memory, float(self._state.get("peak_equity", 0.0)))
+        state = reconcile(balances, tickers, self._pairs, memory, float(self._state.get("peak_equity", 0.0)),
+                          allow_short=cfg.allow_short)
         self._last_state = state
         self._state.setdefault("initial_equity", state.equity)
 
@@ -132,7 +133,7 @@ class Bot:
 
         stale_now = {p for p in self._pairs if bool(prices.stale[p].iloc[-1])}
         orders = plan_orders(targets, state.holdings, tickers, stale_now, state.cash, state.equity, rules,
-                             cfg.fee_rate, cfg.min_trade_notional)
+                             cfg.fee_rate, cfg.min_trade_notional, allow_short=cfg.allow_short)
         fills = self._execute(orders, state.equity, now)
 
         save_memory(cfg.paths.memory, memory)

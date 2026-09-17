@@ -47,6 +47,8 @@ class BotConfig:
     keep_awake: bool = False               # ask the host not to suspend while trading (Windows laptops)
     key_suffix: str = ""                  # ROOSTOO_API_KEY<suffix> — lets two bots use two accounts
     base_url: str | None = None            # override the exchange URL, e.g. the local mock server
+    allow_short: bool = False              # plan sells beyond holdings and reconcile negative balances as shorts;
+                                           # off unless the exchange's short mechanics have been verified
 
 
 def load_config(path) -> BotConfig:
@@ -74,4 +76,5 @@ def load_config(path) -> BotConfig:
         keep_awake=bool(raw.get("keep_awake", False)),
         key_suffix=str(raw.get("key_suffix", "")),
         base_url=raw.get("base_url"),
+        allow_short=bool(raw.get("allow_short", False)),
     )

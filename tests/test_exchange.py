@@ -77,3 +77,12 @@ def test_roostoo_balances_and_prices_are_flattened():
     ex = RoostooExchange(FakeClient())
     assert ex.balances() == {"USD": 500.0, "BTC": 0.01}
     assert ex.prices() == {"BTC/USD": 50_000.0}
+
+
+def test_paper_short_sale_leaves_a_negative_balance_and_a_buy_covers_it(tmp_path):
+    ex = PaperExchange(feed({"ETH/USD": 3_000.0}), rules(), tmp_path / "w.json", fee_rate=0.001, initial_usd=10_000.0,
+                       allow_short=True)
+    ex.place_market("ETH/USD", "SELL", 1.0)
+    assert ex.balances() == {"USD": pytest.approx(10_000 + 3_000 - 3), "ETH": -1.0}
+    ex.place_market("ETH/USD", "BUY", 1.0)
+    assert ex.balances() == {"USD": pytest.approx(10_000 - 3 - 3), "ETH": 0.0}

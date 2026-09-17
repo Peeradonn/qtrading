@@ -39,8 +39,9 @@ class Exchange(Protocol):
 
 class PaperExchange:
     def __init__(self, price_feed, rules: dict[str, PairInfo], wallet_path, fee_rate: float = 0.001,
-                 initial_usd: float = 1_000_000.0):
+                 initial_usd: float = 1_000_000.0, allow_short: bool = False):
         self._feed = price_feed
+        self._allow_short = allow_short          # a sell beyond the holding leaves a negative balance: a short
         self._rules = rules
         self._path = Path(wallet_path)
         self._fee = fee_rate
@@ -74,7 +75,7 @@ class PaperExchange:
             self._wallet["USD"] -= notional + fee
             self._wallet[coin] = self._wallet.get(coin, 0.0) + quantity
         elif side == "SELL":
-            if self._wallet.get(coin, 0.0) + 1e-12 < quantity:
+            if not self._allow_short and self._wallet.get(coin, 0.0) + 1e-12 < quantity:
                 raise InsufficientFunds(f"need {quantity} {coin}, have {self._wallet.get(coin, 0.0)}")
             self._wallet[coin] = self._wallet.get(coin, 0.0) - quantity
             if abs(self._wallet[coin]) < 1e-12:

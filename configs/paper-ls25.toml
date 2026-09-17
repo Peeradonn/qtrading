@@ -1,0 +1,59 @@
+# Paper run of the entry with a short leg on the ranking's losers (research run 12). NOT the competition config:
+# every backtest number for this book assumes a short is a sell beyond the holding, valued at price, with no
+# borrow cost and a 1x cap on gross exposure, and Roostoo's API documents describe none of that. This paper run
+# exercises the engine's short path (planner, reconcile, gross guard) on live prices while that is unverified.
+# Adoption rule: one real short on the test account must behave as assumed, or this stays a paper bot.
+# Start with: scripts\start_bot.ps1 -Config configs\paper-ls25.toml
+name = "paper-ls25"
+mode = "trade"                 # trade | hold | liquidate — re-read every cycle; change it via a commit
+exchange = "paper"
+allow_short = true             # plan sells beyond holdings; reconcile negative balances as shorts
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_days = 14
+required_active_days = 8
+alerts = true                  # Discord webhook / Telegram from .env
+digest_every_h = 4
+keep_awake = true              # this bot runs on a laptop; a suspended host silently stops trading
+# competition_start omitted: the activity floor is inactive during paper trading
+
+# The 35 most liquid crypto pairs on Roostoo at the 2026-09-14 snapshot, plus PAXG.
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]                     # the entry (equal weight, 3%/day target) plus the short leg of run 12
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168             # warm-up floor for the volatility estimate
+vol_model = "ewma"             # chosen on forecast error, not returns - see docs/whitepaper.md
+ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
+min_age_h = 720
+k = 6
+buffer_rank = 12
+select_hour_utc = 0            # select at 00:00 UTC, as backtested
+weighting = "equal"
+vol_target_daily = 0.03
+avg_corr = 0.7
+drift_band = 0.05
+short_k = 6                    # short the six lowest-ranked names...
+short_share = 0.25             # ...with a quarter of gross exposure when the leg is full
+short_buffer_rank = 12         # keep a short while it stays within the bottom twelve
+max_exposure = 0.9             # target gross below 1x, leaving room for drift between rebalances
+gross_guard = 1.0              # realised gross past 1x: rebalance everything to target at once
+
+[paths]
+wallet = "data/paper/paper-ls25_wallet.json"
+journal = "logs/paper-ls25.jsonl"
+memory = "data/paper/paper-ls25_memory.json"
+state = "data/paper/paper-ls25_state.json"
+cache = "data/cache-paper-ls25"            # its own copy: two bots must not share a parquet cache
+
+[limits]
+max_orders_per_cycle = 14                  # six longs, six shorts and room for a rotation
+max_order_fraction = 0.6
+data_max_lag_h = 2
+data_deadline_s = 240
+equity_jump_alert = 0.05

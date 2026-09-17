@@ -470,3 +470,13 @@ def test_negative_only_shorts_leave_the_gross_to_the_longs_when_nothing_is_falli
     row = sig_row({"A": 3.0, "B": 2.0, "C": 1.0})
     strat = Momentum(MomentumParams(k=2, buffer_rank=2, short_k=2, short_share=0.5, short_negative_only=True))
     assert strat.targets(ts(0), row, state()) == {"A": pytest.approx(0.5), "B": pytest.approx(0.5)}
+
+
+# targets: A +0.75, B -0.25. Inside the cap the drift band leaves small gaps alone; past it everything goes to target.
+def test_realised_gross_past_the_guard_bypasses_the_drift_band():
+    row = sig_row({"A": 2.0, "B": -2.0})
+    strat = Momentum(MomentumParams(k=1, buffer_rank=1, short_k=1, short_share=0.25, short_buffer_rank=1, drift_band=0.05))
+    inside = state(holdings={"A": 1.0, "B": -1.0}, weights={"A": 0.72, "B": -0.26})
+    assert strat.targets(ts(0), row, inside) == {"A": pytest.approx(0.72), "B": pytest.approx(-0.26)}
+    past = state(holdings={"A": 1.0, "B": -1.0}, weights={"A": 0.80, "B": -0.28})
+    assert strat.targets(ts(0), row, past) == {"A": pytest.approx(0.75), "B": pytest.approx(-0.25)}

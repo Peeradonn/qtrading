@@ -65,6 +65,8 @@ class MomentumParams:
     short_share: float = 0.5                    # share of gross exposure in the short leg when it is full
     short_buffer_rank: int = 12                 # keep a short while it ranks within this many from the bottom
     short_negative_only: bool = False           # short only names whose score is negative
+    gross_guard: float = 1.0                    # a book with shorts whose realised gross drifts past this is
+                                                #   rebalanced to target at once, drift band or not
 
 
 def market_gate(close: pd.Series, ma_h: int, band: float) -> pd.Series:
@@ -284,6 +286,8 @@ class Momentum:
 
         # the engine sets force_rebalance for one cycle when the active-days pace is at risk
         band = 0.0 if mem.pop("force_rebalance", False) else p.drift_band
+        if (p.short_k or p.hedge_ratio) and sum(abs(w) for w in state.weights.values()) > p.gross_guard:
+            band = 0.0                              # realised gross has drifted past the cap: back to target now
         out = {}
         for pair, w in weights.items():
             current = state.weights.get(pair, 0.0)

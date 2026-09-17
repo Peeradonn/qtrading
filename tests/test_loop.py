@@ -265,3 +265,29 @@ def test_a_generous_budget_is_not_spent_during_the_cycle(tmp_path):
     bot = Bot(cfg, ConstantTargets({"BTC/USD": 0.5}), ex, store, UNIVERSE, Journal(cfg.paths.journal, commit="t"))
     bot.run_once(NOW)
     assert store.deadline_seen() is False
+
+
+# --- shorts: only when the config says the exchange's mechanics have been verified ---------------------------
+
+def test_a_negative_target_places_nothing_while_shorts_are_off(tmp_path):
+    bot, ex = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5, "ETH/USD": -0.2}))
+    result = bot.run_once(NOW)
+    assert [(f.pair, f.side) for f in result.fills] == [("BTC/USD", "BUY")]
+    assert ex.balances().get("ETH", 0.0) == 0.0
+
+
+def test_with_shorts_allowed_the_short_is_opened_then_reconciled_as_a_holding(tmp_path):
+    cfg = config(tmp_path)
+    cfg.allow_short = True
+    ex = PaperExchange(lambda: dict(TICKER), RULES, cfg.paths.wallet, fee_rate=0.001, initial_usd=1_000_000.0,
+                       allow_short=True)
+    bot = Bot(cfg, ConstantTargets({"BTC/USD": 0.5, "ETH/USD": -0.2}), ex, FakeStore(panel()), UNIVERSE,
+              Journal(cfg.paths.journal, commit="test"))
+    first = bot.run_once(NOW)
+    assert sorted((f.pair, f.side) for f in first.fills) == [("BTC/USD", "BUY"), ("ETH/USD", "SELL")]
+    assert ex.balances()["ETH"] == pytest.approx(-200_000 / 3_000, rel=1e-3)
+    second = bot.run_once(NOW + pd.Timedelta(hours=1))
+    assert not any(f.pair == "ETH/USD" and f.side == "SELL" for f in second.fills)      # it does not short twice
+    last = json.loads((tmp_path / "j.jsonl").read_text().splitlines()[-1])
+    assert last["kind"] == "cycle_end" and last["state"]["holdings"]["ETH/USD"] < 0
+    assert last["state"]["weights"]["ETH/USD"] == pytest.approx(-0.2, abs=0.01)

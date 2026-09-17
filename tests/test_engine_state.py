@@ -39,3 +39,16 @@ def test_rounding_residuals_count_toward_equity_but_are_not_holdings():
     assert state.holdings == {"SOL/USD": 2.0}
     assert state.equity == 1000.0 + 200.0 + 0.5
     assert set(state.weights) == {"SOL/USD"}
+
+
+def test_a_negative_balance_is_a_short_position_only_when_shorts_are_allowed():
+    from qtrading.engine.state import reconcile
+    balances = {"USD": 1500.0, "BTC": 0.01, "ETH": -0.1}
+    prices = {"BTC/USD": 50_000.0, "ETH/USD": 3_000.0}
+    pairs = ["BTC/USD", "ETH/USD"]
+    long_only = reconcile(balances, prices, pairs, memory={}, peak_equity=0.0)
+    assert long_only.holdings == {"BTC/USD": 0.01} and long_only.equity == 2000.0
+    shorting = reconcile(balances, prices, pairs, memory={}, peak_equity=0.0, allow_short=True)
+    assert shorting.holdings == {"BTC/USD": 0.01, "ETH/USD": -0.1}
+    assert shorting.equity == 1500.0 + 500.0 - 300.0
+    assert shorting.weights["ETH/USD"] == -300.0 / 1700.0
