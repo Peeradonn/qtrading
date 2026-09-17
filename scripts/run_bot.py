@@ -62,11 +62,11 @@ def setup_logging(name: str) -> None:
 
 def build(config_path: Path):
     cfg = load_config(config_path)
-    for field in ("wallet", "journal", "memory", "state"):                # config paths are repo-relative
+    for field in ("wallet", "journal", "memory", "state", "cache"):       # config paths are repo-relative
         setattr(cfg.paths, field, str(ROOT / getattr(cfg.paths, field)))
     snapshot = load_snapshot(SNAPSHOT)
     universe = [a for a in build_universe(snapshot) if a.pair in cfg.strategy.pairs]
-    store = PriceStore(cache_dir=ROOT / "data" / "cache", sources={"binance": BinanceSource(), "yahoo": YahooSource()})
+    store = PriceStore(cache_dir=cfg.paths.cache, sources={"binance": BinanceSource(), "yahoo": YahooSource()})
     base_url = cfg.base_url or os.environ.get("ROOSTOO_BASE_URL", DEFAULT_BASE_URL)
 
     if cfg.exchange == "paper":

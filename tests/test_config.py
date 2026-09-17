@@ -86,3 +86,12 @@ def test_shipped_configs_select_at_midnight_utc_whenever_the_bot_starts():
             if mem["last_select"] != before:
                 selections.append(t.hour)
         assert selections == [0, 0], f"{name} re-selected at hours {selections}"
+
+
+def test_each_bot_can_have_its_own_price_cache(tmp_path):
+    base = tmp_path / 'base.toml'
+    base.write_text(SAMPLE, encoding='utf-8')
+    assert load_config(base).paths.cache == 'data/cache'                          # the default
+    own = tmp_path / 'own.toml'
+    own.write_text(SAMPLE.replace('[limits]', 'cache = "data/cache-own"' + chr(10) + '[limits]'), encoding='utf-8')
+    assert load_config(own).paths.cache == 'data/cache-own'

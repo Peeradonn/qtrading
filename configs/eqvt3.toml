@@ -1,0 +1,49 @@
+# The competition entry, chosen 2026-09-17 on the exposure frontier (whitepaper section 5.2): the core's signal and
+# selection, equal weights instead of inverse volatility, and a 3%/day volatility target instead of 2%. It gives up
+# tail (one fortnight in nine loses more than 10%, against one in twenty-five for the core) for rally participation,
+# because Screen 2 is a rank by return. configs/core.toml stays as the operational fallback.
+# Requires ROOSTOO_API_KEY / ROOSTOO_SECRET_KEY in .env.
+name = "eqvt3"
+mode = "trade"                 # trade | hold | liquidate — re-read every cycle; change it via a commit, never by hand on the API
+exchange = "roostoo"
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_start = 2026-09-30
+competition_days = 14
+required_active_days = 8
+alerts = true                  # Discord webhook / Telegram from .env
+digest_every_h = 4
+
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]                     # research run 9 (2026-09-17): equal weight, 3%/day target, everything else the core's
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168             # warm-up floor for the volatility estimate
+vol_model = "ewma"             # chosen on forecast error, not returns - see docs/whitepaper.md
+ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
+min_age_h = 720
+k = 6                          # keep at 6: the ratio edge of this book does not survive K=8
+buffer_rank = 12
+select_hour_utc = 0            # select at 00:00 UTC, as backtested
+weighting = "equal"
+vol_target_daily = 0.03
+avg_corr = 0.7
+drift_band = 0.05
+
+[paths]
+wallet = "data/live/eqvt3_wallet.json"       # unused for roostoo; kept for a uniform config shape
+journal = "logs/eqvt3.jsonl"
+memory = "data/live/eqvt3_memory.json"
+state = "data/live/eqvt3_state.json"
+
+[limits]
+max_orders_per_cycle = 12
+max_order_fraction = 0.6
+data_max_lag_h = 2
+data_deadline_s = 300
+equity_jump_alert = 0.05

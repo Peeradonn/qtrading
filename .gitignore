@@ -13,6 +13,7 @@ dist/
 # runtime output
 logs/
 data/cache/
+data/cache-*/
 data/results/
 
 # bot runtime state (paper and live)

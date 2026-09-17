@@ -15,6 +15,7 @@ class Paths:
     journal: str
     memory: str
     state: str
+    cache: str = "data/cache"             # per-bot price cache; two bots on one host must not share one
 
 
 @dataclass

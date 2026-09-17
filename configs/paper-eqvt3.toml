@@ -1,0 +1,50 @@
+# Paper run of the competition entry (equal weight, 3%/day target) on live Roostoo prices, no API keys.
+# Start with: scripts\start_bot.ps1 -Config configs\paper-eqvt3.toml   (runs alongside paper-core; separate lock,
+# wallet, journal and memory)
+name = "paper-eqvt3"
+mode = "trade"                 # trade | hold | liquidate — re-read every cycle; change it via a commit
+exchange = "paper"
+fee_rate = 0.001
+min_trade_notional = 50.0
+lookback_days = 60
+competition_days = 14
+required_active_days = 8
+alerts = true                  # Discord webhook / Telegram from .env
+digest_every_h = 4             # paper-core already posts hourly; keep this one quieter
+keep_awake = true              # this bot runs on a laptop; a suspended host silently stops trading
+# competition_start omitted: the activity floor is inactive during paper trading
+
+# The 35 most liquid crypto pairs on Roostoo at the 2026-09-14 snapshot, plus PAXG.
+pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
+         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
+         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
+         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+
+[strategy]                     # research run 9 (2026-09-17): equal weight, 3%/day target, everything else the core's
+lookbacks_h = [72, 168, 336]
+skip_h = 12
+vol_window_h = 168             # warm-up floor for the volatility estimate
+vol_model = "ewma"             # chosen on forecast error, not returns - see docs/whitepaper.md
+ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
+min_age_h = 720
+k = 6                          # keep at 6: the ratio edge of this book does not survive K=8
+buffer_rank = 12
+select_hour_utc = 0            # select at 00:00 UTC, as backtested
+weighting = "equal"
+vol_target_daily = 0.03
+avg_corr = 0.7
+drift_band = 0.05
+
+[paths]
+wallet = "data/paper/paper-eqvt3_wallet.json"
+journal = "logs/paper-eqvt3.jsonl"
+memory = "data/paper/paper-eqvt3_memory.json"
+state = "data/paper/paper-eqvt3_state.json"
+cache = "data/cache-paper-eqvt3"           # its own copy: parquet writes are not atomic, so two bots must not share a cache
+
+[limits]
+max_orders_per_cycle = 12
+max_order_fraction = 0.6
+data_max_lag_h = 2
+data_deadline_s = 240
+equity_jump_alert = 0.05
