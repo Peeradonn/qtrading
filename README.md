@@ -5,17 +5,21 @@ A long-only, rule-based momentum-rotation strategy trading a $1M mock spot portf
 on the Roostoo exchange, designed around the competition's scoring (return, then
 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar).
 
-**Status (2026-09-16):** strategy locked after six research runs and an out-of-sample check; live engine complete
-and paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
+**Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–10
+mapped the exposure frontier and chose the competition entry on it (whitepaper §5.2): the same signal with equal weights
+and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; both books
+paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
 **Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring
 function, the evidence, and every hypothesis we tested and rejected. The [design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
 is the full decision log and research history.
 
 **The strategy in one paragraph.** Hourly, score the 35 most liquid crypto pairs (plus gold) on their 3-, 7- and
 14-day returns divided by their own volatility. Once a day, hold the top 6, keeping a holding while it stays in
-the top 12. Weight by inverse volatility and scale the whole book so estimated portfolio volatility is 2% a day;
-the rest is cash. Rebalance only when a holding drifts more than 5 points from target. No regime switches, no
-machine learning. In-sample it halves BTC's tails and triples its total; out of sample it did the same.
+the top 12. Weight them equally and scale the whole book so estimated portfolio volatility is 3% a day; the rest is
+cash. Rebalance only when a holding drifts more than 5 points from target. No regime switches, no machine learning.
+The fallback core weights by inverse volatility at a 2% target: shallower tails, less of a rally. In-sample the
+entry beats BTC on median, ratios and total and cuts its worst fortnight from −30% to −23%; the core halves BTC's
+tails and triples its total, and did the same out of sample.
 
 ## Layout
 
