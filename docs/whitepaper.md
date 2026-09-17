@@ -336,7 +336,9 @@ diffs it. Live cycles reproduce exactly. A judge can run this against our commit
 
 **The bot never trades blind.** Any exception anywhere in a cycle means no orders. It refuses to trade on stale
 data, holds for a cycle on an unexplained equity move over 5%, stops a cycle on an uncertain order response
-rather than risking a duplicate fill (`place_order` never retries), and caps per-order size as a runaway guard.
+rather than risking a duplicate fill (`place_order` never retries), caps per-order size as a runaway guard, and
+paces every API call at two seconds so that a full rebalance stays under the exchange's limit of thirty calls a
+minute even with retries.
 
 **Rule compliance is built in, not promised.** Every request and decision is journalled as JSON stamped with the
 git commit that produced it, so the trade log maps to the code that made it. There is no manual-trading path: the

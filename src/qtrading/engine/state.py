@@ -7,20 +7,28 @@ import pandas as pd
 from ..strategy import State
 
 
+DUST_NOTIONAL = 1.0      # a residual worth less than this is rounding, not a position (the FAQ: -0.01 after a sell)
+
+
 def reconcile(balances: dict[str, float], prices: dict[str, float], pairs: list[str], memory: dict,
-              peak_equity: float) -> State:
+              peak_equity: float, dust_notional: float = DUST_NOTIONAL) -> State:
     """Holdings are whatever the exchange says we own of each tradeable pair's coin, valued at the last price.
-    The peak only ever moves up."""
-    holdings, values = {}, {}
+    Rounding residuals (negative, or worth less than ``dust_notional``) count toward equity but are not holdings,
+    so they cannot keep a name in the book through hysteresis. The peak only ever moves up."""
+    holdings, values, dust = {}, {}, 0.0
     for pair in pairs:
         coin = pair.split("/")[0]
         qty = float(balances.get(coin, 0.0))
         price = prices.get(pair)
-        if qty > 0 and price is not None and price > 0:
-            holdings[pair] = qty
-            values[pair] = qty * price
+        if qty <= 0 or price is None or price <= 0:
+            continue
+        if qty * price < dust_notional:
+            dust += qty * price
+            continue
+        holdings[pair] = qty
+        values[pair] = qty * price
     cash = float(balances.get("USD", 0.0))
-    equity = cash + sum(values.values())
+    equity = cash + sum(values.values()) + dust
     weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
     return State(holdings=holdings, weights=weights, cash=cash, equity=equity,
                  peak_equity=max(peak_equity, equity), memory=memory)

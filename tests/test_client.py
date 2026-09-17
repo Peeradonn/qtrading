@@ -224,6 +224,16 @@ def test_place_order_never_retries_and_reports_uncertainty():
 
 # --- throttle ---
 
+# the FAQ's limit is 30 calls a minute across every endpoint; the default spacing keeps a 12-order cycle at ~24 calls
+# a minute even with retries
+def test_default_pacing_keeps_a_busy_cycle_under_thirty_calls_a_minute():
+    env = FakeEnv()
+    client, t = make([TICKER_EOS, TICKER_EOS], env=env)
+    client.ticker()
+    client.ticker()
+    assert t.calls[1].at - t.calls[0].at >= 2.0
+
+
 def test_consecutive_requests_are_spaced_by_min_interval():
     env = FakeEnv()
     client, t = make([TICKER_EOS, TICKER_EOS], env=env, min_interval_s=0.25)

@@ -29,3 +29,13 @@ def test_memory_round_trips_through_json_with_timestamps_restored(tmp_path):
 
 def test_missing_memory_file_loads_as_empty(tmp_path):
     assert load_memory(tmp_path / "nope.json") == {}
+
+
+def test_rounding_residuals_count_toward_equity_but_are_not_holdings():
+    from qtrading.engine.state import reconcile
+    balances = {"USD": 1000.0, "BTC": 0.00001, "ETH": -0.01, "SOL": 2.0}          # $0.50 of BTC dust, a -0.01 rounding artefact
+    prices = {"BTC/USD": 50_000.0, "ETH/USD": 3_000.0, "SOL/USD": 100.0}
+    state = reconcile(balances, prices, ["BTC/USD", "ETH/USD", "SOL/USD"], memory={}, peak_equity=0.0)
+    assert state.holdings == {"SOL/USD": 2.0}
+    assert state.equity == 1000.0 + 200.0 + 0.5
+    assert set(state.weights) == {"SOL/USD"}

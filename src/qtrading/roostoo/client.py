@@ -52,7 +52,7 @@ class RequestsTransport:
 
 class RoostooClient:
     def __init__(self, api_key: str, secret_key: str, base_url: str = DEFAULT_BASE_URL, transport: Transport | None = None,
-                 clock: Clock | None = None, min_interval_s: float = 0.25, max_retries: int = 3,
+                 clock: Clock | None = None, min_interval_s: float = 2.0, max_retries: int = 3,
                  backoff_s: float = 0.5, sleep=time.sleep, monotonic=time.monotonic):
         self._key = api_key
         self._secret = secret_key

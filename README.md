@@ -73,7 +73,8 @@ with the real client, exchange adapter and engine running against it:
 ```
 
 Runtime evidence: `logs/<bot>.jsonl` is the append-only journal (every cycle, order and error, stamped with the
-commit that produced it); `logs/<bot>.log` is the human-readable log. Emergency stop: set `mode = "hold"` (or
+commit that produced it); `logs/<bot>.log` is the human-readable log. Fault stop, for a genuine malfunction only — the
+rules prohibit stopping a bot by hand, so the commit must say what broke: set `mode = "hold"` (or
 `"liquidate"`) in the bot's config and commit — it is re-read every cycle.
 
 ## Data conventions
