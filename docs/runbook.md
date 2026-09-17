@@ -6,6 +6,15 @@ must execute by October 1, 8pm HKT; the system liquidates on October 13.
 
 ## Deploy (once, on the Sydney EC2 host)
 
+Launch the instance with the same image the paper VPS runs, so this is a repeat of a procedure already done:
+
+- **Image:** Ubuntu Server 24.04 LTS, 64-bit (x86). If the organizers' guide requires Amazon Linux 2023, the setup
+  script handles it too, but that path has not been run.
+- **Region:** Sydney (ap-southeast-2). **Instance profile:** `HackathonInstanceRole` (Advanced details).
+- **Size:** whatever the guide allows. One bot needs about 150 MB; on a 1 GB instance the script adds swap. The
+  default 8 GB volume is enough.
+- **Access:** Session Manager or SSH, whichever the guide describes; the script only needs `sudo`.
+
 ```bash
 sudo bash deploy/setup_ec2.sh https://github.com/<you>/qtrading.git eqvt3
 sudo nano /opt/qtrading/.env            # ROOSTOO_API_KEY, ROOSTOO_SECRET_KEY, ALERT_WEBHOOK_URL, HEARTBEAT_URL_EQVT3

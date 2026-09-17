@@ -87,7 +87,7 @@ operator's page: deploy, watch, what each alert means, how to change anything wi
 last day. The pieces:
 
 ```
-deploy/setup_ec2.sh        one-shot setup of an Ubuntu host (EC2 or VPS): clone, venv, tests, .env, enable bots
+deploy/setup_ec2.sh        one-shot host setup (Ubuntu 24.04; Amazon Linux 2023 untested): clone, venv, tests, bots
 deploy/qtrading@.service   systemd template, one instance per config: Restart=always, never fights a live lock
 Dockerfile                 the same bot as a container, for anyone who wants to run it elsewhere
 requirements.txt           runtime dependencies (pyproject.toml is the source of truth)
