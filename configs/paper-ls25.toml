@@ -14,7 +14,7 @@ lookback_days = 60
 competition_days = 14
 required_active_days = 8
 alerts = true                  # Discord webhook / Telegram from .env
-digest_every_h = 4
+digest_every_h = 1             # hourly, like the other paper bots
 keep_awake = true              # this bot runs on a laptop; a suspended host silently stops trading
 # competition_start omitted: the activity floor is inactive during paper trading
 
