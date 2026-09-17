@@ -1,0 +1,24 @@
+# systemd unit for the competition bot on the organizers' EC2 host (Ubuntu). Installed by deploy/setup_ec2.sh,
+# which substitutes the config path. Replaces scripts/supervise.py, which exists for machines without systemd.
+[Unit]
+Description=qtrading momentum bot on Roostoo
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/qtrading
+EnvironmentFile=/opt/qtrading/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/qtrading/.venv/bin/python scripts/run_bot.py --config configs/eqvt3.toml
+Restart=always
+RestartSec=30
+# exit code 2 means another live instance holds this bot's lock; restarting would only fight it
+RestartPreventExitStatus=2
+KillSignal=SIGINT
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

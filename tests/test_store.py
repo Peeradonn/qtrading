@@ -1,5 +1,6 @@
 """PriceStore: disk cache with incremental updates; hourly UTC grid; stale mask; no look-ahead."""
 import pandas as pd
+import pytest
 
 from qtrading.data.store import PriceStore
 from qtrading.data.universe import Asset
@@ -166,3 +167,23 @@ def test_a_deadline_reached_partway_leaves_the_remaining_assets_on_cache(tmp_pat
     assert src.fetches == 1
     assert not prices.stale["BTC/USD"].iloc[-1]        # first asset refreshed to the newest hour
     assert prices.stale["ETH/USD"].iloc[-1]            # second fell back to cache
+
+
+# --- the cache write is write-then-rename, so a crash mid-write cannot corrupt what was there ------------------
+
+def test_a_failed_cache_write_leaves_the_previous_cache_intact(tmp_path, monkeypatch):
+    data = {"BTCUSDT": bars([(h, 100 + h) for h in range(1, 8)])}
+    make_store(tmp_path, binance=FakeSource(data)).closes([BTC], ts(1), ts(5))          # cache holds hours 1-5
+
+    def boom(self, path, *args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", boom)
+    with pytest.raises(OSError):
+        make_store(tmp_path, binance=FakeSource(data)).closes([BTC], ts(1), ts(7))      # the tail refresh dies mid-write
+    monkeypatch.undo()
+    source = FakeSource(data)
+    prices = make_store(tmp_path, binance=source).closes([BTC], ts(1), ts(5))
+    assert source.calls == []                                                          # served from the intact cache
+    assert list(prices.close["BTC/USD"]) == [101, 102, 103, 104, 105]
+

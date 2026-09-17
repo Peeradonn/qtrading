@@ -1,0 +1,6 @@
+# Runtime dependencies. The source of truth is pyproject.toml (`pip install -e .`); this file exists because the
+# organizers' FAQ asks for one and because `pip install -r requirements.txt` is what a judge will try on a bare host.
+requests>=2.32
+pandas>=2.2
+pyarrow>=17
+yfinance>=0.2.60

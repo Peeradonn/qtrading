@@ -4,6 +4,7 @@ Grid rule: grid time T holds the last bar whose close time falls in (T - 1h, T].
 therefore first visible at 02:00 — never at 01:00 — so consumers cannot see the future by construction.
 Hours with no closing bar carry the previous close forward and are flagged in `stale`.
 """
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -97,6 +98,8 @@ class PriceStore:
             merged = pd.concat([p for p in parts if not p.empty]).sort_index()
             merged = merged[~merged.index.duplicated(keep="last")]
 
-        if not merged.empty:
-            merged.to_parquet(path)
+        if not merged.empty:                       # write-then-rename: a crash mid-write cannot corrupt the cache
+            tmp = path.with_name(path.name + ".tmp")
+            merged.to_parquet(tmp)
+            os.replace(tmp, path)
         return merged[(merged.index >= start) & (merged.index <= end)]

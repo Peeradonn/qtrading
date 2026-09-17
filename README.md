@@ -77,6 +77,20 @@ commit that produced it); `logs/<bot>.log` is the human-readable log. Fault stop
 rules prohibit stopping a bot by hand, so the commit must say what broke: set `mode = "hold"` (or
 `"liquidate"`) in the bot's config and commit — it is re-read every cycle.
 
+## Deploy
+
+The competition bot runs on the organizers' EC2 host under systemd. [docs/runbook.md](docs/runbook.md) is the
+operator's page: deploy, watch, what each alert means, how to change anything within the rules, day one and the
+last day. The pieces:
+
+```
+deploy/setup_ec2.sh        one-shot host setup: clone, venv, .env from the template, enable the service
+deploy/qtrading.service    systemd unit: Restart=always, never fights another live instance (exit code 2)
+Dockerfile                 the same bot as a container, for anyone who wants to run it elsewhere
+requirements.txt           runtime dependencies (pyproject.toml is the source of truth)
+scripts/supervise.py       the laptop stand-in for systemd, used for paper trading
+```
+
 ## Data conventions
 
 Every bar is indexed by its **close time** — the moment its close price became known — and the hourly panel
