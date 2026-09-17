@@ -424,3 +424,12 @@ def test_exposure_floor_bounds_the_vol_target_from_below():
     assert cut == {"A": pytest.approx(0.25), "B": pytest.approx(0.25)}
     floored = Momentum(MomentumParams(k=2, vol_target_daily=0.02, avg_corr=1.0, min_exposure=0.8)).targets(ts(0), row, state())
     assert floored == {"A": pytest.approx(0.4), "B": pytest.approx(0.4)}
+
+
+# the same live-bars-only volatility (0.10690) when the panel marks nothing stale but extra['live_bars'] does
+def test_vol_uses_the_live_bars_mask_from_extra_when_present():
+    base = panel2({"A/USD": [100, 100, 110, 110, 99, 99, 105]})
+    live = pd.DataFrame({"A/USD": [True, False, True, False, True, False, True]}, index=base.close.index)
+    prices = Prices(close=base.close, stale=base.stale, volume=None, extra={"live_bars": live})
+    strat = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=6, min_age_h=0))
+    assert strat.signals(prices)[("vol", "A/USD")].iloc[6] == pytest.approx(0.10690, rel=1e-3)

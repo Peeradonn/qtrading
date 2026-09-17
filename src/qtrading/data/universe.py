@@ -12,8 +12,14 @@ STOCK_UNDERLYING = {
     "MUB": "MU", "SNDKB": "SNDK", "WDCB": "WDC", "GLWB": "GLW", "LITEB": "LITE", "NBISB": "NBIS",
     "SPCXB": "SPCX",        # SpaceX, listed 2026-06 — short history
     "CBRSB": "CBRS",        # Cerebras, listed 2026-05 — short history
-    "SKHYB": "000660.KS",   # SK Hynix on KRX; KRW-denominated, so returns differ from the USD token by USDKRW moves
+    "SKHYB": "000660.KS",   # SK Hynix on KRX; KRW-denominated -- and the token prints ~178 USD against ~1.7M KRW a share,
+                            # so this mapping is suspect; excluded from research until resolved
 }
+
+# Roostoo's stock pairs are tokenised equities that price around the clock (verified 2026-09-17). Bybit's spot
+# xStocks are the same instrument class with free 24/7 hourly history, for the names it lists.
+TOKEN_SYMBOLS = {"COINB": "COINXUSDT", "CRCLB": "CRCLXUSDT", "GOOGLB": "GOOGLXUSDT", "METAB": "METAXUSDT",
+                 "NVDAB": "NVDAXUSDT", "TSLAB": "TSLAXUSDT", "SPCXB": "SPCXXUSDT"}
 
 
 @dataclass(frozen=True)
@@ -47,3 +53,10 @@ def build_universe(snapshot: dict) -> list[Asset]:
         else:
             log.warning("unknown AssetType %r for %s; excluded", asset_type, pair)
     return assets
+
+
+def token_assets(snapshot: dict) -> list[Asset]:
+    """The stock pairs whose 24/7 token history Bybit publishes, as assets sourced from Bybit."""
+    return [Asset(pair, d["Coin"], "stock", "bybit", TOKEN_SYMBOLS[d["Coin"]])
+            for pair, d in snapshot["TradePairs"].items()
+            if d.get("CanTrade") and d.get("AssetType") == "stock" and d["Coin"] in TOKEN_SYMBOLS]

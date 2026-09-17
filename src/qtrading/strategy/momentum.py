@@ -113,7 +113,14 @@ class Momentum:
             raise ValueError(f"sleeve pairs must be in the selectable universe: {missing}")
 
         # hourly log returns on live bars only: a carried-forward price is not a zero-return observation
-        logret = np.log(close).diff().where(~prices.stale[cols])
+        # ...and a research panel that treats an asset as tradable on carried-forward prices (Roostoo's stock
+        # tokens price around the clock; our underlying history does not) passes the true live-bar mask in extra
+        live = prices.extra.get("live_bars") if prices.extra else None
+        if live is not None:
+            live_mask = live.reindex(index=close.index, columns=cols).fillna(False).astype(bool)
+        else:
+            live_mask = ~prices.stale[cols]
+        logret = np.log(close).diff().where(live_mask)
         # min_periods: a stock has only ~35 live returns in a 168h window (7 bars x 5 days), so require W/6
         warmup = max(2, p.vol_window_h // 6)
         if p.vol_model == "ewma":
