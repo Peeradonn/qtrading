@@ -4,7 +4,8 @@ from qtrading.engine.alerts import make_alerter, make_heartbeat
 
 
 def clear_env(monkeypatch):
-    for k in ("ALERT_WEBHOOK_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEARTBEAT_URL"):
+    for k in ("ALERT_WEBHOOK_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEARTBEAT_URL",
+              "HEARTBEAT_URL_PAPER_LS25", "HEARTBEAT_URL_PAPER_CORE"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -94,3 +95,13 @@ def test_heartbeat_without_a_url_is_a_noop_and_failures_are_swallowed(monkeypatc
     def boom(url):
         raise ConnectionError("down")
     make_heartbeat(get=boom)(True)
+
+
+def test_each_bot_pings_its_own_check_and_falls_back_to_the_shared_one(monkeypatch):
+    clear_env(monkeypatch)
+    monkeypatch.setenv("HEARTBEAT_URL", "https://hc-ping.com/shared")
+    monkeypatch.setenv("HEARTBEAT_URL_PAPER_LS25", "https://hc-ping.com/ls25")
+    pings = []
+    make_heartbeat(get=pings.append, bot_name="paper-ls25")(True)
+    make_heartbeat(get=pings.append, bot_name="paper-core")(True)
+    assert pings == ["https://hc-ping.com/ls25", "https://hc-ping.com/shared"]

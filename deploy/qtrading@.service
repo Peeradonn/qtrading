@@ -1,0 +1,28 @@
+# systemd template unit: one instance per bot, named after its config file.
+#   systemctl enable --now qtrading@eqvt3            -> configs/eqvt3.toml
+#   systemctl enable --now qtrading@paper-core       -> configs/paper-core.toml
+# Installed by deploy/setup_ec2.sh, which substitutes the service user and the install directory.
+# Replaces scripts/supervise.py, which exists for machines without systemd.
+[Unit]
+Description=qtrading bot %i on Roostoo
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@RUN_AS@
+WorkingDirectory=@APP@
+EnvironmentFile=@APP@/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@APP@/.venv/bin/python scripts/run_bot.py --config configs/%i.toml
+Restart=always
+RestartSec=30
+# exit code 2 means another live instance holds this bot's lock; restarting would only fight it
+RestartPreventExitStatus=2
+KillSignal=SIGINT
+TimeoutStopSec=120
+MemoryMax=600M
+
+[Install]
+WantedBy=multi-user.target

@@ -4,9 +4,12 @@ Alerts:    ALERT_WEBHOOK_URL (Discord-style webhook: POST {"content": text}) win
            TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID; otherwise silent.
 Heartbeat: HEARTBEAT_URL (healthchecks.io-style): GET it after every cycle, GET <url>/fail after a failed one.
            The service alerts you when pings stop — the one failure a dead bot cannot report itself.
+           Give each bot its own check in HEARTBEAT_URL_<NAME> (paper-core -> HEARTBEAT_URL_PAPER_CORE): with one
+           check shared by several bots, the live ones keep pinging it and a dead one goes unnoticed.
 """
 import logging
 import os
+import re
 
 import requests
 
@@ -56,8 +59,12 @@ def make_alerter(enabled: bool, post_json=_post_json, post_form=_post_form):
     return silent
 
 
-def make_heartbeat(get=_get):
-    url = os.environ.get("HEARTBEAT_URL")
+def heartbeat_env_name(bot_name: str) -> str:
+    return "HEARTBEAT_URL_" + re.sub(r"[^A-Z0-9]+", "_", bot_name.upper()).strip("_")
+
+
+def make_heartbeat(get=_get, bot_name: str | None = None):
+    url = (os.environ.get(heartbeat_env_name(bot_name)) if bot_name else None) or os.environ.get("HEARTBEAT_URL")
     if not url:
         return lambda ok=True: None
 

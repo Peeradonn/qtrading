@@ -1,6 +1,6 @@
 """Pull perpetual funding-rate history from Binance futures for the liquid crypto universe into the cache.
 
-Run:  .venv\Scripts\python.exe scripts\fetch_funding.py
+Run:  .venv\\Scripts\\python.exe scripts\\fetch_funding.py
 Symbols without a perpetual (e.g. PAXG) simply return nothing and are reported.
 """
 import sys

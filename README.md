@@ -7,8 +7,8 @@ on the Roostoo exchange, designed around the competition's scoring (return, then
 
 **Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–11
 mapped the exposure frontier, chose the competition entry on it (whitepaper §5.2) and closed the stocks question: the same signal with equal weights
-and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; both books
-paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
+and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; three books
+(core, entry, entry with a short leg) paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
 **Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring
 function, the evidence, and every hypothesis we tested and rejected. The [design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
 is the full decision log and research history.
@@ -87,8 +87,8 @@ operator's page: deploy, watch, what each alert means, how to change anything wi
 last day. The pieces:
 
 ```
-deploy/setup_ec2.sh        one-shot host setup: clone, venv, .env from the template, enable the service
-deploy/qtrading.service    systemd unit: Restart=always, never fights another live instance (exit code 2)
+deploy/setup_ec2.sh        one-shot setup of an Ubuntu host (EC2 or VPS): clone, venv, tests, .env, enable bots
+deploy/qtrading@.service   systemd template, one instance per config: Restart=always, never fights a live lock
 Dockerfile                 the same bot as a container, for anyone who wants to run it elsewhere
 requirements.txt           runtime dependencies (pyproject.toml is the source of truth)
 scripts/supervise.py       the laptop stand-in for systemd, used for paper trading

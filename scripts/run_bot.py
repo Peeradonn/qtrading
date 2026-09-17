@@ -84,7 +84,7 @@ def build(config_path: Path):
     journal = Journal(cfg.paths.journal, current_commit(ROOT))
     alerter = make_alerter(cfg.alerts)
     bot = Bot(cfg, Momentum(cfg.strategy, name=cfg.name), exchange, store, universe, journal, alerter,
-              mode_reader=lambda: load_config(config_path).mode, heartbeat=make_heartbeat())
+              mode_reader=lambda: load_config(config_path).mode, heartbeat=make_heartbeat(bot_name=cfg.name))
     return cfg, bot
 
 
