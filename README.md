@@ -5,8 +5,8 @@ A long-only, rule-based momentum-rotation strategy trading a $1M mock spot portf
 on the Roostoo exchange, designed around the competition's scoring (return, then
 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar).
 
-**Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–10
-mapped the exposure frontier and chose the competition entry on it (whitepaper §5.2): the same signal with equal weights
+**Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–11
+mapped the exposure frontier, chose the competition entry on it (whitepaper §5.2) and closed the stocks question: the same signal with equal weights
 and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; both books
 paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
 **Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring

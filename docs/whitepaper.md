@@ -63,9 +63,14 @@ is either held or in cash. Commission is 0.1% on market orders and 0.05%
 on limit orders, and there is no historical price endpoint, so signals are computed from Binance's public hourly
 candles while Roostoo is used for execution and portfolio state.
 
-We trade the **35 crypto pairs above $5M daily volume, plus PAXG**. Tokenised equities are excluded from v1 for
-two reasons: they only price during US market hours, so at a 00:00 UTC decision every one of them is stale; and
-their weekend pricing behaviour on Roostoo is unverified. They remain a candidate for a second bot.
+We trade the **35 crypto pairs above $5M daily volume, plus PAXG**. Tokenised equities are not in the book, and
+the reason changed on the last day of research. We had assumed they price only during US hours, so that at a
+00:00 UTC decision every one of them is stale; that was an artefact of our data, the underlying share's history.
+Roostoo's tokens price around the clock: seven hours after the US close, every one showed a live bid and ask and
+half changed price within a minute, within 0.2% of Bybit's tokenised-stock quotes. Tested properly, with 24/7
+token history from Bybit for the seven names it lists, stocks in the ranking are ballast: they improve the worst
+fortnight and max drawdown and lower rally participation, ratios and total return (§7). They would suit the
+fallback core; they do not suit the entry.
 
 **Gold is in the universe as a candidate, not as a hedge.** The ranking treats PAXG like any other asset, and
 gold's 2025 trend put it at the top often enough to average 18% of the book in-sample, as much as 55% in
@@ -279,7 +284,7 @@ tested through the same harness, and discarded.
 | **Both together** | *Worse than either alone and worse than the plain core* (+73% vs +108%). Two real effects do not cancel; two noise-level effects do exactly this. Both excluded. |
 | **Funding-rate crowding filter** | Effect flipped sign between thresholds of 0.02% and 0.03% per 8 hours. Noise, plus a live dependency on another API for no demonstrated gain. |
 | **Overlapping selection tranches** | Averaged the single-hour results and added 2–4 points of fees. |
-| **Tokenised equities** | Deferred: unverified weekend pricing, and selecting during US hours degraded the crypto book. |
+| **Tokenised equities in the ranking pool** | Pre-registered and rejected for the entry. Two findings first. Every earlier test at 00:00 UTC had traded no stock at all, because our underlying-share history marks them stale outside US hours while Roostoo's tokens are live (§3). And the obvious fix, treating the carried-forward close as tradable, fails validation: on the same seven names over the same fourteen months it gives a Sharpe of 0.29 where the true 24/7 token prices give 1.19, so only the token panel is evidence. On that panel, adding the seven tokens to the entry lowers the top-40% rate in rising fortnights from 63% to 56% and in falling ones from 90% to 84%, Sharpe from 1.30 to 1.19 and total from +136% to +116%, while improving the worst fortnight from −23% to −16%. Stocks are a tail diversifier, not a return source at a 3–14-day momentum horizon; the entry was chosen for participation. |
 | **Gold as a permanent sleeve** (idle cash held in PAXG, or PAXG as a fixed position inside the risk budget) | Pre-registered and rejected. Against the core it raised the median fortnight from +0.96% to +1.82% and every ratio (Sharpe 0.87 → 1.57), but made the worst fortnight worse (−15.8% → −19.3%, and −20.3% with gold's drift removed) and lost in the post-May-2026 period as gold fell 6% (p10 −3.1% → −6.2%). Two reasons. A cash sleeve is pro-cyclical: before a crash crypto is calm, the vol target leaves little idle cash, so there is little gold exactly when it is needed. And gold's correlation with crypto is near zero on average but not in a crash: in January 2026 it fell 8–10% alongside Bitcoin. Gold held *by rank* is there because gold is trending, whatever crypto is doing; the core with PAXG removed from the ranking is worse on every metric (worst −18.7%, total +71% against +103%, Sharpe 0.76). Conditional gold beats unconditional gold, which is the same lesson as volatility targeting beating gates. |
 | **Downside-deviation targeting; an exposure floor** | Pre-registered to buy rally participation without paying in tails (§5.2). Downside targeting is a wash with the core on every column; a 70% floor leaves the book 77% invested and still outside the top 40% in most big rallies, at a cost of four points of worst fortnight. |
 | **A BTC short against the long book** (the rules' "1x short") | Pre-registered and rejected. A short sized at 25–100% of the long notional was tested on both the vol-targeted core and the full-exposure twin, gross capped at 1x. In the harness the hedge is a dial that trades return for tails almost one-for-one: on the full-exposure leg it runs from the twin (worst fortnight −33%, total +263%) to −13% and +103% at a full hedge, with the median-window Sharpe flat at 0.83–0.87 until three-quarters hedged and collapsing to 0.4 beyond. No ratio met the rule. At three-quarters hedged the fortnight distribution is the core's (median +0.84% vs +0.96%, p10 −6.3% vs −6.7%, worst −15.2% vs −15.8%, Sharpe 0.83 vs 0.87); the larger multi-year total (+138% vs +103%) comes from a fatter right tail, and in rising fortnights the hedged book ranks no better against naive competitors than the core does. Volatility targeting delivers the same distribution without shorts, without unverified exchange mechanics, and without a gross-exposure guard (realised gross drifted to 1.2× between rebalances). Shorting the bottom of the ranking was worse still: −27% over the sample with a −40% worst fortnight in a daily spike, the short squeeze in every rebound. That daily spike had suggested a large ratio gain from the hedge; the harness, with hourly decisions, fees and the drift band, did not confirm it, which is why the harness is the arbiter. |
@@ -339,7 +344,7 @@ emergency stop is a `mode` field in a committed config file that the loop re-rea
 tracker watches the 8-active-day requirement and forces a genuine rebalance if the pace falls behind, because
 backtests showed calm fortnights producing as few as 6 trading days.
 
-**Testing.** 224 tests, all offline and deterministic. A look-ahead checker perturbs prices after time *t* and
+**Testing.** 228 tests, all offline and deterministic. A look-ahead checker perturbs prices after time *t* and
 asserts that signals up to *t* are unchanged; it runs on every strategy before its results are reported. Because
 no test API key was available before the competition, we wrote a local server implementing the documented Roostoo
 API over real HTTP — signature validation over the exact bytes sent, the timestamp window, the documented error
@@ -350,7 +355,7 @@ envelopes, and injectable faults — and rehearsed the full engine against it.
 ```powershell
 py -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .[dev]
-.venv\Scripts\python.exe -m pytest                  # 224 tests
+.venv\Scripts\python.exe -m pytest                  # 228 tests
 .venv\Scripts\python.exe scripts\fetch_history.py   # ~2 years of hourly data
 .venv\Scripts\python.exe scripts\run_backtest.py    # in-sample table
 .venv\Scripts\python.exe scripts\run_backtest.py --oos --start 2026-04-01 --report-from 2026-05-15
