@@ -61,6 +61,10 @@ class MomentumParams:
     hedge_pair: str | None = None               # short this pair against the long book (needs a venue that shorts)
     hedge_ratio: float = 0.0                    # short notional as a fraction of the long notional
     max_gross: float = 1.0                      # longs + |shorts| as a fraction of equity (the rules' 1x)
+    short_k: int = 0                            # short this many names from the bottom of the ranking (0 = long-only)
+    short_share: float = 0.5                    # share of gross exposure in the short leg when it is full
+    short_buffer_rank: int = 12                 # keep a short while it ranks within this many from the bottom
+    short_negative_only: bool = False           # short only names whose score is negative
 
 
 def market_gate(close: pd.Series, ma_h: int, band: float) -> pd.Series:
@@ -99,6 +103,8 @@ class Momentum:
             bits.append("sl:" + "+".join(q.split("/")[0] for q in p.sleeve) + f":{p.sleeve_mode}{p.sleeve_fraction:g}")
         if p.hedge_pair and p.hedge_ratio:
             bits.append(f"hg:{p.hedge_pair.split('/')[0]}{p.hedge_ratio:g}")
+        if p.short_k:
+            bits.append(f"ls{p.short_share:g}" + ("n" if p.short_negative_only else ""))
         return ":".join(bits)
 
     # ---- signals ------------------------------------------------------------
@@ -219,8 +225,10 @@ class Momentum:
         if due:
             chosen = self._select(s, state)
             mem["selected"], mem["last_select"] = chosen, t
+            mem["selected_short"] = self._select_shorts(s, state, chosen) if p.short_k else []
         else:
             chosen = [c for c in mem.get("selected", []) if not np.isnan(s["vol"].get(c, np.nan))]
+        shorts = [c for c in mem.get("selected_short", []) if not np.isnan(s["vol"].get(c, np.nan))] if p.short_k else []
         # --- weights and exposure -------------------------------------------
         sleeve = [q for q in p.sleeve if not np.isnan(s["vol"].get(q, np.nan))]   # needs a live vol to be held
         in_book = sleeve if p.sleeve_mode == "book" else []
@@ -235,11 +243,21 @@ class Momentum:
             else:
                 weights = pd.Series(1.0 / slots, index=book)
 
+            if shorts:                                             # the short leg: the bottom of the same ranking
+                fill = len(shorts) / p.short_k                     # unfilled short slots leave that gross to the longs
+                if p.weighting == "inverse_vol":
+                    inv_s = 1.0 / s["vol"].reindex(shorts)
+                    short_w = inv_s / inv_s.sum()
+                else:
+                    short_w = pd.Series(1.0 / len(shorts), index=shorts)
+                weights = pd.concat([weights * (1 - p.short_share * fill), -short_w * p.short_share * fill])
+
             exposure = p.max_exposure
             if p.vol_target_daily:
                 sizing_vol = s["dvol"] if p.vol_target_on == "downside" and "dvol" in s else s["vol"]
                 wv = weights * sizing_vol.reindex(book).fillna(s["vol"].reindex(book)) * np.sqrt(HOURS_PER_DAY)
-                core_wv = wv.reindex(chosen)                       # constant correlation inside the crypto book...
+                core_wv = wv.reindex(chosen + shorts)              # constant correlation inside the crypto book; signed
+                                                                   # weights, so a short nets against the longs...
                 var = (1 - p.avg_corr) * (core_wv ** 2).sum() + p.avg_corr * core_wv.sum() ** 2
                 var += (wv.reindex(in_book) ** 2).sum()            # ...and the sleeve uncorrelated with it
                 port_vol = np.sqrt(var)
@@ -282,10 +300,28 @@ class Momentum:
             return []
         ranked = score.sort_values(ascending=False)
         rank = {pair: i + 1 for i, pair in enumerate(ranked.index)}
-        chosen = [pair for pair in state.holdings if pair in rank and rank[pair] <= p.buffer_rank]
+        chosen = [pair for pair, q in state.holdings.items() if q > 0 and pair in rank and rank[pair] <= p.buffer_rank]
         for pair in ranked.index:
             if len(chosen) >= p.k:
                 break
             if pair not in chosen:
                 chosen.append(pair)
         return chosen
+
+    def _select_shorts(self, s: pd.Series, state: State, longs: list[str]) -> list[str]:
+        """The mirror image: rank from the bottom; keep a current short while it stays inside the bottom buffer."""
+        p = self.params
+        score = s["score"].drop(labels=[q for q in list(p.sleeve) + longs if q in s["score"].index]).dropna()
+        if p.short_negative_only:
+            score = score[score < 0]
+        if score.empty:
+            return []
+        ranked = score.sort_values(ascending=True)
+        rank = {pair: i + 1 for i, pair in enumerate(ranked.index)}
+        chosen = [pair for pair, q in state.holdings.items() if q < 0 and pair in rank and rank[pair] <= p.short_buffer_rank]
+        for pair in ranked.index:
+            if len(chosen) >= p.short_k:
+                break
+            if pair not in chosen:
+                chosen.append(pair)
+        return chosen[:p.short_k]

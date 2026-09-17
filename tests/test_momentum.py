@@ -433,3 +433,40 @@ def test_vol_uses_the_live_bars_mask_from_extra_when_present():
     prices = Prices(close=base.close, stale=base.stale, volume=None, extra={"live_bars": live})
     strat = Momentum(MomentumParams(lookbacks_h=(1,), skip_h=0, vol_window_h=6, min_age_h=0))
     assert strat.signals(prices)[("vol", "A/USD")].iloc[6] == pytest.approx(0.10690, rel=1e-3)
+
+
+# --- short leg: the bottom of the same ranking, behind the backtester's allow_short -------------------------
+
+def test_short_leg_takes_the_bottom_of_the_ranking_at_its_share_of_gross():
+    row = sig_row({"A": 3.0, "B": 2.0, "C": -1.0, "D": -2.0})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, short_k=2, short_share=0.5, short_buffer_rank=2))
+    t = strat.targets(ts(0), row, state())
+    assert t == {"A": pytest.approx(0.25), "B": pytest.approx(0.25), "C": pytest.approx(-0.25), "D": pytest.approx(-0.25)}
+
+
+def test_a_current_short_is_kept_while_it_stays_inside_the_bottom_buffer():
+    row = sig_row({"A": 3.0, "B": 2.0, "C": -1.0, "D": -2.0})
+    strat = Momentum(MomentumParams(k=1, buffer_rank=1, short_k=1, short_share=0.5, short_buffer_rank=2))
+    held = state(holdings={"C": -1.0}, weights={"C": -0.5})               # D is the worst, but C is held and second worst
+    assert strat.targets(ts(0), row, held) == {"A": pytest.approx(0.5), "C": pytest.approx(-0.5)}
+
+
+def test_long_hysteresis_ignores_names_that_are_held_short():
+    row = sig_row({"A": 3.0, "B": 2.0, "C": 1.0})
+    strat = Momentum(MomentumParams(k=1, buffer_rank=3))
+    assert strat.targets(ts(0), row, state(holdings={"B": -1.0}, weights={"B": -0.3})) == {"A": pytest.approx(1.0)}
+
+
+# perfectly correlated, equal vol, equal and opposite weights -> estimated portfolio vol is zero, exposure stays full
+def test_vol_target_nets_the_short_leg_against_the_longs():
+    hv = 0.04 / math.sqrt(24)
+    row = sig_row({"A": 2.0, "B": -2.0}, vols={"A": hv, "B": hv})
+    strat = Momentum(MomentumParams(k=1, buffer_rank=1, short_k=1, short_share=0.5, short_buffer_rank=1,
+                                    vol_target_daily=0.02, avg_corr=1.0))
+    assert strat.targets(ts(0), row, state()) == {"A": pytest.approx(0.5), "B": pytest.approx(-0.5)}
+
+
+def test_negative_only_shorts_leave_the_gross_to_the_longs_when_nothing_is_falling():
+    row = sig_row({"A": 3.0, "B": 2.0, "C": 1.0})
+    strat = Momentum(MomentumParams(k=2, buffer_rank=2, short_k=2, short_share=0.5, short_negative_only=True))
+    assert strat.targets(ts(0), row, state()) == {"A": pytest.approx(0.5), "B": pytest.approx(0.5)}
