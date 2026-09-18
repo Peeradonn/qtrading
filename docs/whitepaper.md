@@ -1,34 +1,52 @@
 # A Volatility-Managed Momentum Rotation Strategy for the Roostoo Mock Exchange
 
 **HK vs Australia vs India Quant Trading Hackathon 2026** · Susquehanna × Roostoo
-Repository: `qtrading` · Strategy locked 2026-09-16 · Live 2026-10-01 → 2026-10-14
+Repository: `qtrading` · Strategy locked 2026-09-16 · Universe made a rule 2026-09-18 · Live 2026-10-01 → 2026-10-14
 
 ---
 
 ## 1. Summary
 
-We trade a long-only momentum rotation over the most liquid assets on Roostoo, sized so that the portfolio's
-estimated volatility stays near 3% per day. The signal is deliberately ordinary — three-, seven- and fourteen-day
-returns divided by each asset's own volatility — and the work went into the two things that actually decide a
-14-day contest: **controlling turnover** and **controlling drawdown**.
+We trade a long-only momentum rotation over every crypto pair on Roostoo that clears a rolling liquidity floor,
+sized so that the portfolio's estimated volatility stays near 3% per day. The signal is deliberately ordinary —
+three-, seven- and fourteen-day returns divided by each asset's own volatility — and the work went into the two
+things that actually decide a 14-day contest: **controlling turnover** and **controlling drawdown**.
 
-Against buying and holding Bitcoin over the same two years:
+Against buying and holding Bitcoin, in-sample (2024-09-19 → 2026-05-14):
 
 | | Median fortnight | Bad fortnight (p10) | Worst fortnight | Max drawdown | Total return |
 |---|---|---|---|---|---|
-| **Entry: equal weight, 3% target** | **+1.38%** | −10.3% | −23.3% | −47% | **+176%** |
-| Core: inverse-vol, 2% target (the fallback) | +0.96% | **−6.7%** | **−15.8%** | **−34%** | +103% |
+| **Entry: equal weight, 3% target** | **+1.24%** | −8.6% | −17.3% | −38% | **+146%** |
+| Core: inverse-vol, 2% target (the fallback) | +0.74% | **−5.7%** | **−13.0%** | **−29%** | +92% |
 | BTC buy-and-hold | +0.80% | −9.1% | −29.8% | −50% | +28% |
 
-The core was locked first and passed a sealed test on four months held out and looked at exactly once: worst
-fortnight −8.3% against BTC's −20.7%, max drawdown −14.6% against −29.4%, total +36.8% against +13.8%. The entry
-was chosen afterwards, on the frontier of §5.2, and on the same four months it made +35.5% with a worst fortnight
-of −8.2% (§6). It buys participation in rallies, which the competition's return gate rewards, at the price of
-deeper tails, which §8 states plainly.
+These are not the figures this paper first reported, and the difference is the most important thing we found.
+Until 2026-09-18 the universe was a list of 35 pairs chosen on September 2026 volume and then backtested over the
+two years before it, so names were in the pool because of what they later did. We measured that bias and it was
+most of the edge: with the same 35 pairs admitted honestly, by a rule that sees only past volume, the entry's
+Screen 3 composite falls from 1.05 to 0.75, level with holding Bitcoin at 0.73. The universe is now that rule
+applied to every pair Roostoo lists. It carries no hindsight and runs identically live.
+
+The rule has one number in it, a $5M floor that was never derived, so we tested its neighbours, and the results
+move with it more than we would like. The table above is the $5M row, which is the best of five floors on both
+tail columns. Across $3M, $5M and $8M the entry averages a composite of 0.85, a worst fortnight of −18.8%, a max
+drawdown of −39.5% and a total of +120%, and that average is the figure we stand behind (§6, §8). What holds at
+every floor we tried is the shape: tails well inside Bitcoin's, and a total return above it.
+
+The core was locked first and passed a sealed test on four months held out and looked at exactly once. That test
+ran on the hindsight list too, and the list was chosen at the end of those four months, so we no longer present it
+as clean. Under the rule, the same four months are a consistency check and not a holdout, because they have now
+been looked at more than once: the entry made +32% with a worst fortnight of −8.9% and the core +13% with −10.3%,
+against Bitcoin's −5% and −20.7% (§6). Those are the $5M figures, and in that period $5M is the best of the five
+floors by a wide margin: at $3M and $8M the entry made +11% and +7%. The period holds about eight independent
+fortnights, and most of that gap is one August rally the higher floors missed. The entry buys participation in
+rallies, which the competition's return gate rewards, at the price of deeper tails than the core's, which §8
+states plainly.
 
 We think the interesting parts of this submission are not the returns. They are: the reasoning about what the
-scoring function rewards (§2), the list of ideas we tested and **rejected** (§7), and the fact that every live
-decision can be mechanically re-derived from the journal (§9).
+scoring function rewards (§2), the list of ideas we tested and **rejected** (§7), the bias we found in our own
+backtest and what correcting it cost (§8), and the fact that every live decision can be mechanically re-derived
+from the journal (§9).
 
 ## 2. What the scoring function actually rewards
 
@@ -63,9 +81,14 @@ is either held or in cash. Commission is 0.1% on market orders and 0.05%
 on limit orders, and there is no historical price endpoint, so signals are computed from Binance's public hourly
 candles while Roostoo is used for execution and portfolio state.
 
-We trade the **35 crypto pairs above $5M daily volume, plus PAXG** (gold clears the floor on its own, so it
-needs no exception). `scripts/build_universe_list.py` derives that list by rule from the committed
-exchangeInfo and ticker snapshots, so the floor can be audited and re-applied rather than taken on trust.
+We trade **every crypto pair Roostoo lists that Binance has history for, 65 at the snapshot, admitted hour by
+hour by a liquidity rule**: a pair is eligible while its trailing seven-day dollar volume is at least $5M a day.
+PAXG (gold) is in the pool like any other pair; OMNI and TON have no Binance history and are left out. The rule
+lives inside the signal (`liquidity_min_daily`), so a decision at time *t* sees volume only to *t*, and the
+backtest and the live bot apply it with the same code. `scripts/build_universe_list.py --pool` reproduces the
+pool from the committed exchangeInfo snapshot. Until 2026-09-18 the universe was a fixed list of 35 pairs chosen
+on that month's volume; §8 explains why that was a mistake and what it was worth.
+
 Tokenised equities are not in the book, and
 the reason changed on the last day of research. We had assumed they price only during US hours, so that at a
 00:00 UTC decision every one of them is stale; that was an artefact of our data, the underlying share's history.
@@ -96,12 +119,13 @@ Hourly, for each asset in the universe:
    deviations has this moved?", not "how much has this moved" — without it, the highest-volatility memecoin wins
    the ranking every day. Volatility is measured on live bars only, so a carried-forward price is never mistaken
    for a zero return.
-2. **Selection, once per day at 00:00 UTC.** Rank by score and hold the top 6. An existing holding is kept while
-   it remains in the top 12. This hysteresis is what makes the strategy affordable.
+2. **Selection, once per day at 00:00 UTC.** Rank the pairs the liquidity rule admits (§3) by score and hold the
+   top 6. An existing holding is kept while it remains in the top 12. This hysteresis is what makes the strategy
+   affordable.
 3. **Weighting.** Equal, one sixth of the book each. The core weighted by inverse volatility; §5.2 shows why the
    entry does not.
 4. **Exposure.** Scale the whole book so estimated portfolio volatility is 3% per day under a constant-correlation
-   model; the remainder stays in cash. Average invested weight is about 70%. The fallback core targets 2%.
+   model; the remainder stays in cash. Average invested weight is about 57%. The fallback core targets 2%.
 5. **Execution.** Trade a holding only when it has drifted more than 5 percentage points from its target. Market
    orders, sells before buys so a rotation fits in available cash.
 
@@ -234,13 +258,67 @@ deployable as the fallback.
 
 | | Median | p10 | p90 | Worst | Beats BTC | Median MDD | Sharpe | Sortino | Calmar | Total | Max DD |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **Entry** (equal weight, 3%) | **+1.38%** | −10.3% | **+18.0%** | −23.3% | 56% | 6.8% | **1.04** | **1.68** | **0.20** | **+176%** | −47% |
-| Core (inverse-vol, 2%) | +0.96% | **−6.7%** | +11.7% | **−15.8%** | **57%** | **4.6%** | 0.87 | 1.36 | 0.18 | +103% | **−34%** |
+| **Entry** (equal weight, 3%) | **+1.24%** | −8.6% | **+16.7%** | −17.3% | **54%** | 6.3% | **0.98** | **1.47** | 0.18 | **+146%** | −38% |
+| Core (inverse-vol, 2%) | +0.74% | **−5.7%** | +10.8% | **−13.0%** | 52% | **4.5%** | 0.80 | 1.29 | **0.19** | +92% | **−29%** |
 | BTC hold | +0.80% | −9.1% | +10.4% | −29.8% | — | 6.3% | 0.72 | 1.17 | 0.14 | +28% | −50% |
 
-Fees run about 0.3% per fortnight for either book. The core beats BTC on every column, which is unusual enough
-that we treated it as a warning rather than a result and went looking for the ways it could be an artefact (§8).
-The entry gives up the two tail columns and max drawdown for the rest; that is the choice §5.2 describes.
+Both books trade the pool of 65 pairs under the rolling liquidity rule (§3). Fees run about 0.25% per fortnight
+for either book, and both average 57% invested. The entry gives up the two tail columns and max drawdown for the
+rest; that is the choice §5.2 describes.
+
+The first version of this table, on the fixed list of 35, had the core beating BTC on every column. That is
+unusual enough that we treated it as a warning rather than a result and went looking for the ways it could be an
+artefact. The universe was the way. The same harness, the same panel and the same field of competitors, with only
+the universe changed:
+
+| Universe | Entry composite | Core composite | Entry worst fortnight | Entry max drawdown |
+|---|---|---|---|---|
+| Fixed 35, chosen on September 2026 volume (hindsight) | 1.05 | 0.86 | −23.3% | −47% |
+| The same 35, admitted by the rolling $5M/day rule | 0.75 | 0.73 | −23.3% | −46.5% |
+| **The pool of 65, admitted by the rule (what we trade)** | **0.94** | **0.81** | **−17.3%** | **−38.2%** |
+| BTC hold | 0.73 | | −29.8% | −50% |
+
+Composite is the Screen 3 formula, 0.4 × Sortino + 0.3 × Sharpe + 0.3 × Calmar, on the median fortnight's ratios.
+The middle row is the honest price of the list: a tie with Bitcoin. The pool was pre-registered to be adopted
+unless its tails or holdout ratios were materially worse, since a universe with no selection in it is the
+principled one whatever it scores. It improved the worst fortnight by six points and max drawdown by eight, and
+§2 calls drawdown the most valuable number on the board. Under the rule the core's median is below Bitcoin's. It
+is a tail-control book, and it no longer looks like anything else.
+
+The rule still contains one number, and it was never derived: $5M was a round figure applied by hand to a ticker
+reading, carried into the rule unchanged. `scripts/liquidity_floor_study.py` tested its neighbours, with the
+reading committed before the run. It is a robustness check, not a search; no floor is adopted for scoring best.
+The entry, over the same pool:
+
+| Floor | Composite | Worst fortnight | Max drawdown | Total | Composite after May | Total after May |
+|---|---|---|---|---|---|---|
+| $2M | 0.80 | −19.7% | −40.0% | +131% | 0.04 | +22.7% |
+| $3M | 0.88 | −19.7% | −41.5% | +128% | −0.26 | +10.5% |
+| **$5M (what we trade)** | 0.94 | **−17.3%** | **−38.2%** | **+146%** | **2.07** | **+32.2%** |
+| $8M | 0.75 | −19.4% | −38.9% | +87% | 0.34 | +7.3% |
+| $12M | **1.20** | −19.0% | −40.7% | +127% | −0.95 | −4.0% |
+| BTC hold | 0.73 | −29.8% | −50% | +28% | 0.16 | −5.2% |
+
+By the rule fixed beforehand this is SENSITIVE, in both books: a neighbour of $5M differs from it by more than
+0.15 of composite or 2 points of tail. There is no trend in it either. $12M scores best in-sample and worst after
+May, which is what picking a floor by score would have bought. So $5M stays, and three things change in how we
+read our own numbers.
+
+The headline is the mean of $3M, $5M and $8M, not the $5M row: for the entry a composite of 0.85, a worst
+fortnight of −18.8%, a max drawdown of −39.5% and a total of +120%; for the core 0.75, −14.4%, −29.3% and +85%.
+We did not choose $5M for its score, since the number predates every backtest, but it is the best of five on both
+in-sample tail columns, and a reader should not take the best cell as the expectation.
+
+The composite is a noisier statistic than we had been treating it. In-sample the five books are nearly the same
+book: fortnight returns at $3M and $5M are 0.97 correlated, and at $5M and $8M the same. Yet the composite on
+median window ratios runs from 0.75 to 1.20 across them. Differences of 0.2 between two variants are therefore
+not findings, and that applies to our own table above: the pool's 0.94 against the 35 pairs' 0.75 is inside that
+band. What the pool bought, against the 35 pairs at $5M, is tails: six points of worst fortnight at $5M and about
+four at each of the other floors.
+
+What holds at every floor is the claim about shape. In-sample, at all five, the entry's worst fortnight is
+between −17% and −20% against Bitcoin's −30%, its max drawdown between −38% and −42% against −50%, its total
+between +87% and +146% against +28%, and its composite at or above Bitcoin's.
 
 ### Out of sample: 2026-05-15 → 2026-09-14, looked at once
 
@@ -252,25 +330,51 @@ beating BTC in at least 45% of windows.
 | **Core** | +0.41% | −3.8% | **−8.3%** | 51% | **−14.6%** | **+36.8%** |
 | BTC hold | +0.03% | −12.8% | −20.7% | — | −29.4% | +13.8% |
 
-It passed. The claim that survived out of sample is specific: **the core roughly halves Bitcoin's tails and
-multiplies its total return.** That is the claim we would defend.
+It passed, and we reported it as the claim we would defend: that the core roughly halves Bitcoin's tails and
+multiplies its total return. That table is the record of what was run on 2026-09-16 and we leave it as it was,
+with two qualifications we did not know to make then. It ran on the fixed list, and the list was chosen on volume
+at the *end* of these four months, so the holdout was exposed to the same hindsight as the sample: ZEC, the best
+performer of the period, was in the list because of that performance. And its Total and Max DD columns count from
+that run's start on 2026-04-01, six weeks before the first scored window; from 2026-05-15 Bitcoin's total is
+−5.2%, not +13.8%.
 
-The entry was chosen after this period was unsealed, so for it these four months are a consistency check, not a
-holdout. On the same windows, from one continuous run of both books:
+The period has since been looked at more than once, and the entry was chosen after it was unsealed, so nothing run
+on it now is a holdout. It is a consistency check. Under the rule the books now trade, on the same 109 windows,
+from one continuous run, with totals and drawdowns counted from 2026-05-15:
 
 | | Median | p10 | Worst | Beats BTC | Max DD | Total |
 |---|---|---|---|---|---|---|
-| Entry (equal weight, 3%) | +2.11% | −4.5% | −8.2% | 61% | −16.1% | +35.5% |
-| Core (inverse-vol, 2%) | +0.92% | −3.1% | −7.9% | 56% | −12.9% | +23.3% |
+| Entry (pool, equal weight, 3%) | **+2.74%** | **−5.1%** | **−8.9%** | **63%** | −17.9% | **+32.2%** |
+| Core (pool, inverse-vol, 2%) | +1.64% | −5.3% | −10.3% | 56% | **−17.2%** | +13.2% |
+| BTC hold | +0.03% | −12.8% | −20.7% | — | −28.5% | −5.2% |
 
-The core's figures differ slightly from the sealed run above because that run began its warm-up on 2026-04-01
-rather than running continuously from 2024.
+These are the $5M figures, and the floor table above shows how much that matters here: after May $5M is the best
+of the five floors by a wide margin, and at $3M and $8M the entry made +10.5% and +7.3% with a composite near
+zero. The period holds about eight independent fortnights, and the gap between $5M and $8M is mostly one of
+them: in the fortnight from 2026-08-07 the book made +16% at $5M and nothing at $8M. What ran in that fortnight
+were small names whose volume was crossing these floors as they rose (HEMI went from $1M to $16M a day while
+gaining 71%), so a lower floor admits them sooner and a higher one later or not at all. That is one event, and
+it cannot tell a better floor from a luckier one. At every floor the entry's total is above Bitcoin's −5.2% and
+its worst fortnight inside Bitcoin's −20.7%; the ratios are not robust, and we do not quote them as evidence.
 
-The same window also produced a genuine surprise. A variant with equal weights and *no* volatility target — the
-same signal at full exposure — returned +65% with a Sharpe of 1.56 and beat BTC in 62% of fortnights. Those four
-months were volatile and rising, and volatility targeting cuts exposure exactly when volatility rises, which in a
-volatile rally means missing upside. The vol target's advantage is therefore **regime-dependent**, not universal.
-This is the evidence behind running a second, risk-on bot alongside the core: the two win in different worlds.
+Both books still meet the terms of the pass rule. The claim that survives is the one about tails: the core's
+worst fortnight is about half of Bitcoin's and its max drawdown about 60% of Bitcoin's, in-sample and here. The
+claim about multiplying its return does not survive as we stated it. The core's +13% against −5% is a better
+outcome, not a multiple, and on the fixed list the same book showed +23%.
+
+The pool has a cost, and this is the kind of period that shows it. Against the rolling rule on the 35 pairs, the
+entry's Sharpe over these windows falls from 2.16 to 1.92, and its rate of reaching the top 40% of the field in
+rising fortnights falls from 73% to 45%. The top six of 65 are more volatile names than the top six of 35, the
+volatility model sizes them smaller, and the book ran 62% invested against 72%. That is the exposure-for-tails
+dial of §5.2 moved by the pool instead of the target. We did not raise the target to win it back, because that
+would be a sweep on data already seen.
+
+On the fixed list, the same window also produced a genuine surprise. A variant with equal weights and *no*
+volatility target — the same signal at full exposure — returned +65% with a Sharpe of 1.56 and beat BTC in 62% of
+fortnights. Those four months were volatile and rising, and volatility targeting cuts exposure exactly when
+volatility rises, which in a volatile rally means missing upside. The vol target's advantage is therefore
+**regime-dependent**, not universal. This is the evidence behind running a second, risk-on bot alongside the
+core: the two win in different worlds.
 
 ## 7. What we rejected
 
@@ -303,28 +407,73 @@ tested through the same harness, and discarded.
 
 We would rather state these than have them found.
 
+- **The universe was chosen with hindsight, and that was most of the measured edge.** We found this one
+  ourselves, two weeks before the competition, and it changed every headline number in this paper. The 35-pair
+  list was chosen on traded volume on 2026-09-14 and backtested over the two years before it. ZEC traded $1.9M a
+  day when the sample began, below the floor, and is in the list because it then rose 36-fold. Our look-ahead
+  checker cannot see this: it perturbs prices within a fixed set of columns, and the universe *is* the columns.
+  `scripts/universe_bias_study.py` measured it on one panel against one field of competitors. With the same 35
+  pairs admitted by a rolling rule that sees only past volume, the entry's composite falls from 1.05 to 0.75
+  and the core's from 0.86 to 0.73, a tie with holding Bitcoin. The fix was to stop having a list: the $5M
+  floor is now a rule inside the signal, applied hourly to every pair Roostoo lists, and the same code runs
+  live. On that pool the composites are 0.94 and 0.81 and the tails are shallower (§6). The rule is still an
+  optimistic bound. It cannot see coins Roostoo never listed or had delisted before our snapshot, and it uses
+  Binance volume as a proxy for Roostoo's.
+- **The liquidity floor is an arbitrary number, and the results move with it.** $5M was never derived. Tested
+  against $2M, $3M, $8M and $12M with the reading committed first, the entry's in-sample composite runs from 0.75
+  to 1.20 and its total from +87% to +146%, with no trend: the floor that scores best in-sample scores worst
+  after May. $5M is the best of the five on in-sample tails and far the best after May, so its row flatters us,
+  and the figure we stand behind is the mean of $3M, $5M and $8M (§6). Two lessons go beyond the floor. Books
+  whose fortnight returns are 0.97 correlated differ by 0.2 of composite, so differences that size between any
+  two variants in this paper are not findings. And the four months after May cannot rank anything: one August
+  fortnight decides them. The tails against Bitcoin hold at every floor. We keep $5M because no other number is
+  defensible either, and moving to the best cell is how a backtest gets overfitted.
+- **The volume rule admits small names as they pump.** A coin's trailing seven-day dollar volume surges when its
+  price does, so the rule lets a small name into the ranking during the very move that makes it rank well. In
+  one fortnight of August 2026 HEMI went from $1M to $16M a day while gaining 71%. Part of the entry's rally
+  return comes from this, and we have left it alone for three reasons. It is not look-ahead: the rule sees volume
+  only to the decision hour and runs identically live. The failure it invites, a pump that reverses, does not
+  show in the tails: a $2M floor admits 51 pairs on average against 35 at $12M, and the entry's worst fortnight
+  is −19.7% against −19.0% and its max drawdown −40.0% against −40.7%. And we cannot validate a replacement, such
+  as a longer window or one that ends before the momentum lookback begins, on data that cannot resolve the floor
+  itself; the window's seven days, like the floor's $5M, was never derived. One cost is unmodelled. The simulator
+  fills at the close with no spread, and on Roostoo the names near the floor quote 5 to 10 bps wide, so crossing
+  costs 2 to 5 bps a side on top of the 10 bps fee. That comes from one calm 7.5-hour sample of the ticker, so
+  it is a lower bound.
+- **§5, §5.2 and §7 still quote the fixed list.** Their tables were run before the universe became a rule and
+  have not been re-run. Each compares books on the same panel, so the direction of a comparison is likelier to
+  hold than its level, and every level in them is flattered. The numbers we stand behind are in §1, §6 and
+  this section.
+- **The pool costs rally rank.** In the four months after May 2026 the entry on the pool reached the top 40%
+  of the field in 45% of rising fortnights, against 73% for the rule on the 35 pairs, because it ran 62%
+  invested against 72% (§6). In the 25 windows of that period where Bitcoin gained more than 5%, the entry
+  reached the top 40% in a quarter and the core in none. We took the trade for six points of worst fortnight
+  and eight of max drawdown, and because the alternative was a universe we could not defend.
 - **The sample is small.** Two years of hourly data contains roughly 43 independent fortnights. Medians are
   trustworthy; extreme quantiles are indicative at best.
-- **Part of the in-sample edge is timing luck.** We swept the selection hour across six values. Tails and total
-  return were robust everywhere (worst fortnight −15% to −17%, max drawdown −32% to −35%, total +61% to +111%),
-  but the "better median and Sharpe than BTC" claim holds only at 00:00 and 12:00 UTC. We kept 00:00 because it is
-  the daily-candle convention chosen before any comparison was run — not because it scored best — and we discount
-  the headline numbers accordingly.
+- **Part of the in-sample edge is timing luck.** We swept the selection hour across six values, on the fixed
+  list. Tails and total return were robust everywhere (worst fortnight −15% to −17%, max drawdown −32% to −35%,
+  total +61% to +111%), but the "better median and Sharpe than BTC" claim holds only at 00:00 and 12:00 UTC. We
+  kept 00:00 because it is the daily-candle convention chosen before any comparison was run — not because it
+  scored best — and we discount the headline numbers accordingly.
 - **Small differences are noise.** A single tie-break in the simulator's fill order once compounded into an
   11-point difference in total return over 20 months. We fixed the non-determinism, and we treat any gap under
   about 10 points of total return as meaningless.
 - **The strategy will lose in choppy and V-shaped markets.** It is late to every turn by construction. Over one
   14-day window the market path dominates; what momentum reliably does is reshape the distribution, not pick the
   outcome.
-- **For Screen 2 the core is a selloff specialist.** Ranked each fortnight against 34 competitors who simply hold
-  one liquid coin, it beats at least 60% of them in 88% of fortnights when Bitcoin falls and in 40% when Bitcoin
-  rises; when Bitcoin gains more than 5% it reaches the top fifth of that field 5% of the time. §5.2 gives the
-  frontier this sits on. How high the real bar sits depends on how many teams enter a region, which we do not know.
-- **The entry was chosen after the holdout was opened.** The core passed a sealed test; the equal-weight book was
-  found and chosen afterwards, on the frontier of §5.2, and its post-May figures are a consistency check. Its
-  ratio advantage over the core is about 0.1 of Sharpe and does not survive K=8; its rally participation does.
-- **The entry's tails are deeper by design.** One fortnight in nine loses more than 10%, against one in
-  twenty-five for the core, and its typical 14-day drawdown is 6.8% against 4.6%. Those losses did not cost rank
+- **For Screen 2 the core is a selloff specialist.** Ranked each fortnight against 35 competitors who simply hold
+  one liquid coin, it beats at least 60% of them in 91% of fortnights when Bitcoin falls and in 35% when Bitcoin
+  rises; when Bitcoin gains more than 5% it reaches the top fifth of that field 6% of the time, and the entry
+  11%. §5.2 gives the frontier this sits on, measured on the fixed list. How high the real bar sits depends on
+  how many teams enter a region, which we do not know.
+- **The entry was chosen after the holdout was opened.** The core passed a sealed test, with the qualifications
+  of §6; the equal-weight book was found and chosen afterwards, on the frontier of §5.2, and its post-May figures
+  are a consistency check. On the fixed list its ratio advantage over the core was about 0.1 of Sharpe and did
+  not survive K=8. On the pool the gap is 0.18 in-sample, and the K=8 test has not been re-run, so we do not lean
+  on it. Its rally participation is what it was chosen for.
+- **The entry's tails are deeper by design.** One fortnight in thirteen loses more than 10%, against one in
+  thirty-seven for the core, and its typical 14-day drawdown is 6.3% against 4.5%. Those losses did not cost rank
   against naive competitors in falling markets, but they are real, and the core stays deployable as the fallback.
 - **We will not know if we were skilled or lucky.** Fourteen days is one draw. We can say what distribution we
   expected, and where the result fell in it.
@@ -350,7 +499,7 @@ emergency stop is a `mode` field in a committed config file that the loop re-rea
 tracker watches the 8-active-day requirement and forces a genuine rebalance if the pace falls behind, because
 backtests showed calm fortnights producing as few as 6 trading days.
 
-**Testing.** 228 tests, all offline and deterministic. A look-ahead checker perturbs prices after time *t* and
+**Testing.** 272 tests, all offline and deterministic. A look-ahead checker perturbs prices after time *t* and
 asserts that signals up to *t* are unchanged; it runs on every strategy before its results are reported. Because
 no test API key was available before the competition, we wrote a local server implementing the documented Roostoo
 API over real HTTP — signature validation over the exact bytes sent, the timestamp window, the documented error
@@ -361,7 +510,7 @@ envelopes, and injectable faults — and rehearsed the full engine against it.
 ```powershell
 py -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .[dev]
-.venv\Scripts\python.exe -m pytest                  # 228 tests
+.venv\Scripts\python.exe -m pytest                  # 272 tests
 .venv\Scripts\python.exe scripts\fetch_history.py   # ~2 years of hourly data
 .venv\Scripts\python.exe scripts\run_backtest.py    # in-sample table
 .venv\Scripts\python.exe scripts\run_backtest.py --oos --start 2026-04-01 --report-from 2026-05-15

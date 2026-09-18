@@ -5,25 +5,30 @@ A long-only, rule-based momentum-rotation strategy trading a $100k mock spot por
 on the Roostoo exchange, designed around the competition's scoring (return, then
 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar).
 
-**Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–11
+**Status (2026-09-18):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–11
 mapped the exposure frontier, chose the competition entry on it (whitepaper §5.2) and closed the stocks question: the same signal with equal weights
 and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; three books
-(core, entry, entry with a short leg) paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Oct 1.
+(core, entry, entry with a short leg) paper-trading on real Roostoo prices. On 2026-09-18 the universe became a rule,
+a rolling liquidity floor over all 65 listed crypto pairs, after we measured a hindsight bias in the fixed list of 35
+(whitepaper §8). Next: EC2 deployment, then the competition account on Oct 1.
 **Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring
 function, the evidence, and every hypothesis we tested and rejected. The [design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
 is the full decision log and research history; [docs/competition-brief.md](docs/competition-brief.md) is
 the organizers' rules, timeline and scoring, as received.
 
-**The strategy in one paragraph.** Hourly, score the 35 most liquid crypto pairs (plus gold) on their 3-, 7- and
-14-day returns divided by their own volatility. Once a day, hold the top 6, keeping a holding while it stays in
+**The strategy in one paragraph.** Hourly, score every crypto pair Roostoo lists (65, gold included) whose trailing
+7-day volume clears $5M a day, on its 3-, 7- and 14-day returns divided by its own volatility. Once a day, hold the top 6, keeping a holding while it stays in
 the top 12. Weight them equally and scale the whole book so estimated portfolio volatility is 3% a day; the rest is
 cash. Rebalance only when a holding drifts more than 5 points from target. No regime switches, no machine learning.
 The fallback core weights by inverse volatility at a 2% target: shallower tails, less of a rally. The rules allow a 1x short, and both uses of it went through the harness (whitepaper §7). A BTC hedge improves nothing
 the competition scores. A short leg on the ranking's losers is different: it loses money on its own, yet as a
 quarter of the book it roughly doubles the ratios and cuts the tails, at some cost in rally rank. It is not in the
-book because it rests on exchange mechanics the API documents do not describe and we have not yet been able to test. In-sample the
-entry beats BTC on median, ratios and total and cuts its worst fortnight from −30% to −23%; the core halves BTC's
-tails and triples its total, and did the same out of sample.
+book because it rests on exchange mechanics the API documents do not describe and we have not yet been able to test. In-sample, at every
+liquidity floor we tested, the entry beats BTC on median fortnight and total return and cuts its worst fortnight from
+−30% to between −17% and −20%; the core roughly halves BTC's tails and nearly triples its total, with a median about
+level with BTC's. Those are the figures after we found a hindsight bias in our own universe and removed it, which cost
+most of the edge the first backtests showed, and after we found that the ratios move with an arbitrary parameter
+more than the tails do (whitepaper §6, §8).
 
 ## Layout
 
