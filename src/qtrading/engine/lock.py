@@ -54,7 +54,15 @@ def _is_alive(pid: int) -> bool:
         return True
     except OSError:
         return False
-    return True
+    # after a hard crash or power loss the lock outlives its process, and on the next boot its pid can belong to
+    # something else entirely; where /proc can tell, only a bot counts as the holder
+    if not Path("/proc/self").exists():
+        return True                           # no /proc (macOS): the existence check is all there is
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False                          # exited between the two checks
+    return b"run_bot" in cmdline
 
 
 def acquire(path, pid: int | None = None, is_alive=_is_alive) -> None:

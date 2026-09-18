@@ -51,14 +51,26 @@ def test_default_liveness_check_sees_this_process_as_alive():
     assert _is_alive(os.getpid()) is True
 
 
+def _wait_until_seen_alive(pid: int, timeout: float = 10.0) -> bool:
+    """A child is not yet itself between fork and exec, so give the liveness check time to see the real process."""
+    import time
+
+    from qtrading.engine.lock import _is_alive
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _is_alive(pid):
+            return True
+        time.sleep(0.05)
+    return False
+
+
 def test_default_liveness_check_does_not_kill_the_process_it_checks():
     import subprocess
     import sys
     import time
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "run_bot.py"])
     try:
-        from qtrading.engine.lock import _is_alive
-        assert _is_alive(child.pid) is True
+        assert _wait_until_seen_alive(child.pid) is True
         time.sleep(0.5)
         assert child.poll() is None, "the liveness check terminated the process it was asked about"
     finally:
@@ -73,3 +85,17 @@ def test_default_liveness_check_reports_an_exited_process_as_dead():
     child.wait(timeout=10)
     from qtrading.engine.lock import _is_alive
     assert _is_alive(child.pid) is False
+
+
+@pytest.mark.skipif(not os.path.exists("/proc/self"), reason="needs /proc to tell what a process is")
+def test_a_live_process_that_is_not_a_bot_does_not_hold_the_lock():
+    # after a power loss the lock's pid can be reused by anything; the bot must take the lock over, not refuse
+    import subprocess
+    import sys
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        from qtrading.engine.lock import _is_alive
+        assert _is_alive(child.pid) is False
+    finally:
+        child.kill()
+        child.wait(timeout=10)
