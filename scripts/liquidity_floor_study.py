@@ -43,6 +43,20 @@ The entry's reading is the one that counts, because the entry is the book that c
 beside it. The post-May windows hold about eight independent fortnights, so they are shown and used only for the
 TREND test, never for a band.
 
+Result (2026-09-18, run after the commit that fixed the reading above). SENSITIVE in both books, no TREND; $5M is
+kept. The $5M rows match the bias study to the digit. Entry, in-sample composite by floor: 0.80, 0.88, 0.94, 0.75,
+1.20; worst fortnight -19.7%, -19.7%, -17.3%, -19.4%, -19.0%; total +131%, +128%, +146%, +87%, +127%. After May:
+composite 0.04, -0.26, 2.07, 0.34, -0.95; total +22.7%, +10.5%, +32.2%, +7.3%, -4.0%. So $5M is the best of five
+on in-sample tails and far the best after May, and $12M is best in-sample and worst after May. Headline by the
+rule, the mean of $3M/$5M/$8M: entry 0.85, -18.8%, -39.5%, +120%; core 0.75, -14.4%, -29.3%, +85%. The ZEC
+expectation was wrong: the lower floors hold more ZEC in-sample (3.0% and 2.8% against 1.8%) and score lower.
+Two findings beyond the floor. Fortnight returns at neighbouring floors are 0.97 correlated in-sample while the
+composite runs 0.75 to 1.20, so the median-ratio composite is noisier than it had been treated, and the pool's
+0.94 against the 35 pairs' 0.75 is inside that band. And after May the $5M-$8M gap is mostly the fortnight from
+2026-08-07 (+16.3% against +0.2%), when what ran were small names whose volume was crossing these floors as they
+rose, so a lower floor admits them sooner. Holdings were not saved, so that is the mechanism the panel shows, not
+a record of what each book held. What holds at all five floors: tails well inside Bitcoin's, total above it.
+
   .venv\\Scripts\\python.exe scripts\\liquidity_floor_study.py
 """
 import sys
