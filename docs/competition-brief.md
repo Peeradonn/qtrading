@@ -181,5 +181,9 @@ Our notes as of 2026-09-18, not the organizers' words. Each of these is open unt
   the organizers actually score.
 - **Rate limit.** The client's `min_interval_s = 2.0` spaces requests at exactly 30 per minute — the documented
   ceiling, with no headroom for a retry landing inside the same minute.
-- **Maker fees.** We model and pay 0.1% taker on market orders. Limit orders are charged half that. Nothing in the
-  strategy needs limit orders, but the 5bp difference has never been weighed.
+- **Maker fees.** We model and pay 0.1% taker on market orders. Limit orders are charged half that. Weighed on
+  2026-09-18: the entry pays about 0.25% of equity a fortnight in fees, so limit orders can save 0.12% at most, and
+  in the harness the halved fee is worth less than path noise (in-sample total +146% to +159%, holdout +32% to
+  +28%). Whether the saving is free depends on what Roostoo does with a marketable limit order, which the API
+  documents do not say. One pre-registered order on the test account decides (`scripts/limit_order_check.py`,
+  runbook "Limit orders"); until then nothing is built.

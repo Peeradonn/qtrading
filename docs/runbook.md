@@ -75,6 +75,41 @@ BUY closes it, and the 1x limit rejects new exposure instead of liquidating. If 
 stays long-only and nothing else changes. If all hold, the competition config is `eqvt3.toml` plus the
 `allow_short` line and the five short-leg lines from the paper config, committed before Oct 1.
 
+## Limit orders (only if adopted)
+
+The rules charge 0.05% on a limit order against 0.1% on a market order, and the bot sends market orders only.
+Nothing is built for limit orders until the test account answers one question, because what would have to be built
+depends entirely on the answer: what does Roostoo do with a limit order that is already marketable? The prize is
+capped at half the fee bill, and the harness puts a number on it: the entry pays about 0.25% of equity a fortnight in
+fees, so a limit order can save 0.12% at most. Run with the fee halved, the in-sample total moves from +146% to
++159% and the holdout total from +32% to +28%. The second figure is path noise (whitepaper §8), and that is the
+point: the saving is smaller than the noise in the harness that would have to justify it. So the bar for adopting
+is that it costs the order path nothing.
+
+The check is one order, run once when the test keys arrive (`ROOSTOO_API_KEY_TEST` / `ROOSTOO_SECRET_KEY_TEST` in
+`.env`; the script refuses the competition account's key names):
+
+```bash
+.venv/bin/python scripts/limit_order_check.py            # dry run: shows the order, sends nothing signed
+.venv/bin/python scripts/limit_order_check.py --place    # places it, journals it, prints the verdict
+```
+
+It places a LIMIT BUY of about $100 of BTC priced at the ask, rounded up to the price step: marketable at the
+touch, not through it. Adopt only if all four hold, as `src/qtrading/roostoo/limit_check.py` fixed before the run:
+the `place_order` response itself says `FILLED` for the whole quantity; the fill price is no worse than the limit;
+the commission charged is 0.05% of the notional, whatever `Role` says; and nothing is left pending or locked.
+Then a limit order at the touch is a market order at half the fee, and the change is small: the Roostoo adapter
+sends `LIMIT` at the touch in place of `MARKET`, an order that comes back anything but `FILLED` is cancelled in the
+same cycle and left to the next one's drift band, the mock learns to fill a marketable limit, and the configs set
+`fee_rate = 0.0005`. Rehearse on the mock and the test account, and commit before Oct 1.
+
+Any other outcome and the entry keeps market orders; there is no second order at a different price. If it rests
+(the script cancels it), or fills at 0.1%, the discount exists only for an order that waits between cycles, and
+the engine has no such state by design. `reconcile` reads free balances, so funds locked in an open order look like
+a loss and can trip the 5% equity hold. An order still unfilled on a selection day puts the eight-active-day floor
+at risk. Polling and cancelling spend the thirty-calls-a-minute budget. And the simulator cannot model a fill rule
+we cannot see, which would end backtest-equals-live.
+
 ## Day one (October 1 — first trade in by 8pm HKT)
 
 1. Official keys into `.env`; `sudo systemctl restart qtrading@eqvt3`.
