@@ -2,7 +2,8 @@
 
 signals: per asset, the mean over lookbacks of (return over L hours, skipping the latest skip_h) / (hourly vol * sqrt(L));
          optionally blended with the residual (BTC-beta-neutral) version, scaled by a volume-confirmation multiplier,
-         and masked where perpetual funding says the trade is crowded. Plus each asset's vol and a banded market gate.
+         masked where perpetual funding says the trade is crowded, and masked where trailing dollar volume says the
+         asset is too thin to be in the pool. Plus each asset's vol and a banded market gate.
          Causal operations only.
 targets: eligibility -> gate -> hysteresis -> weights -> exposure (vol target, drawdown brake) -> sleeve -> hedge
          -> drift band.
@@ -45,6 +46,10 @@ class MomentumParams:
     volume_clip: tuple[float, float] = (0.5, 1.5)
     funding_max: float | None = None            # drop assets whose mean funding over funding_window_h exceeds this
     funding_window_h: int = 72
+    liquidity_min_daily: float | None = None    # admit an asset once its trailing dollar volume is at least this
+                                                #   ($/day); None = the universe is whatever `pairs` says
+    liquidity_exit_daily: float | None = None   # ...and keep it admitted until volume falls below this (None = min)
+    liquidity_window_h: int = 168               # trailing window the daily volume is averaged over
     vol_target_daily: float | None = None       # e.g. 0.03; None = no scaling
     vol_target_on: str = "total"                # "total" | "downside": size the book on downside deviation only
     min_exposure: float = 0.0                   # floor on the exposure scalar once anything is selected
@@ -79,6 +84,16 @@ def market_gate(close: pd.Series, ma_h: int, band: float) -> pd.Series:
     return raw.ffill().fillna(0.0)
 
 
+def liquidity_gate(daily: pd.DataFrame, enter: float, exit_: float) -> pd.DataFrame:
+    """1 = admissible, 0 = not, per asset. Admits at or above `enter`, drops below `exit_`, holds in between,
+    and is off while the volume window is warming up. market_gate for a panel of assets, and causal for the
+    same reason: a decision at t sees only volume up to t, so a universe built this way carries no hindsight."""
+    up = daily >= enter
+    down = daily < exit_
+    raw = pd.DataFrame(np.where(up, 1.0, np.where(down, 0.0, np.nan)), index=daily.index, columns=daily.columns)
+    return raw.ffill().fillna(0.0)
+
+
 class Momentum:
     def __init__(self, params: MomentumParams = MomentumParams(), name: str | None = None):
         self.params = params
@@ -107,6 +122,9 @@ class Momentum:
             bits.append(f"hg:{p.hedge_pair.split('/')[0]}{p.hedge_ratio:g}")
         if p.short_k:
             bits.append(f"ls{p.short_share:g}" + ("n" if p.short_negative_only else ""))
+        if p.liquidity_min_daily is not None:
+            band = "" if p.liquidity_exit_daily is None else f"/{p.liquidity_exit_daily / 1e6:g}"
+            bits.append(f"liq{p.liquidity_min_daily / 1e6:g}{band}M")
         return ":".join(bits)
 
     # ---- signals ------------------------------------------------------------
@@ -173,6 +191,13 @@ class Momentum:
             funding = prices.extra["funding"].reindex(index=close.index, columns=cols)
             crowded = funding.rolling(p.funding_window_h, min_periods=1).mean() > p.funding_max
             composite = composite.mask(crowded)
+
+        if p.liquidity_min_daily is not None and prices.volume is not None:
+            # the liquidity floor as a rolling rule, so the pool at t is what was liquid at t, in backtest and live
+            w = p.liquidity_window_h
+            daily = prices.volume[cols].rolling(w, min_periods=w).sum() / (w / HOURS_PER_DAY)
+            exit_ = p.liquidity_exit_daily if p.liquidity_exit_daily is not None else p.liquidity_min_daily
+            composite = composite.mask(liquidity_gate(daily, p.liquidity_min_daily, exit_) == 0)
 
         composite = composite.replace([np.inf, -np.inf], np.nan)
         composite = composite.where(eligible_mask(prices, p.min_age_h)[cols])

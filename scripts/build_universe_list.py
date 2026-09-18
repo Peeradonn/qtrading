@@ -6,9 +6,15 @@ the repo could state the rule ("crypto pairs above $5M of 24h volume, plus gold"
 it. This script makes the rule executable: exchangeInfo says what can be traded, a ticker snapshot says how much
 of it trades, and the floor does the rest.
 
-  python scripts/build_universe_list.py                                  # derive from the committed snapshots
-  python scripts/build_universe_list.py --config configs/eqvt3.toml      # ...and diff against that config
+  python scripts/build_universe_list.py --pool                           # the candidate pool the configs use
+  python scripts/build_universe_list.py --pool --config configs/eqvt3.toml   # ...and diff against that config
+  python scripts/build_universe_list.py                                  # the fixed $5M floor, for reference
   python scripts/build_universe_list.py --capture                        # take a fresh ticker snapshot first
+
+Since 2026-09-18 the configs carry the POOL -- every tradeable crypto pair Binance has history for -- and the
+liquidity floor is applied by the strategy as a rolling rule (`liquidity_min_daily`), every hour, from trailing
+volume. The fixed-floor mode below is the historical derivation of the 35-pair list the whitepaper's early runs
+used; it stays so that list can be reproduced and diffed, not because anything runs on it.
 
 Deriving needs no network and no keys: it reads the newest snapshot of each kind under data/snapshots. Capturing
 calls the public ticker endpoint once and writes a dated snapshot beside them, so the reading that produced a
@@ -24,7 +30,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from qtrading.data.universe import liquid_pairs
+from qtrading.data.universe import build_universe, liquid_pairs
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOTS = ROOT / "data" / "snapshots"
@@ -56,7 +62,7 @@ def capture_ticker() -> Path:
     return out
 
 
-def as_toml(pairs: list[str], per_line: int = 3) -> str:
+def as_toml(pairs: list[str], per_line: int = 5) -> str:
     """The list as a configs/*.toml `pairs` array, ready to paste."""
     quoted = [f'"{p}"' for p in pairs]
     lines = [", ".join(quoted[i:i + per_line]) for i in range(0, len(quoted), per_line)]
@@ -69,31 +75,42 @@ def main() -> int:
     ap.add_argument("--capture", action="store_true", help="take a fresh public ticker snapshot first")
     ap.add_argument("--min-volume", type=float, default=DEFAULT_MIN_VOLUME, help="24h USD traded value floor")
     ap.add_argument("--config", help="diff the derived list against this config's pairs")
+    ap.add_argument("--pool", action="store_true",
+                    help="the candidate pool: every tradeable crypto pair with Binance history, no volume floor")
     args = ap.parse_args()
 
     if args.capture:
         capture_ticker()
-    info_path, ticker_path = newest("exchange_info_*.json"), newest("ticker_*.json")
+    info_path = newest("exchange_info_*.json")
     exchange_info = json.loads(info_path.read_text(encoding="utf-8-sig"))
-    ticker = json.loads(ticker_path.read_text(encoding="utf-8-sig"))
-    volumes = {pair: float(d["unit_volume_24h"]) for pair, d in ticker["pairs"].items()}
-    pairs = liquid_pairs(exchange_info, volumes, args.min_volume)
-
     print(f"exchangeInfo : {info_path.name}")
-    print(f"ticker       : {ticker_path.name}  (polled {ticker['polled_at']})")
-    print(f"rule         : AssetType crypto, CanTrade, 24h traded value >= ${args.min_volume:,.0f}")
-    print(f"result       : {len(pairs)} pairs\n")
-    for pair in pairs:
-        print(f"  {pair:14s} ${volumes[pair] / 1e6:9.2f}M")
+    if args.pool:
+        pairs = sorted(a.pair for a in build_universe(exchange_info) if a.asset_type == "crypto")
+        volumes = {}
+        print("rule         : AssetType crypto, CanTrade, Binance carries {coin}USDT (universe.NO_BINANCE)")
+        print(f"result       : {len(pairs)} pairs\n")
+        for pair in pairs:
+            print(f"  {pair}")
+    else:
+        ticker_path = newest("ticker_*.json")
+        ticker = json.loads(ticker_path.read_text(encoding="utf-8-sig"))
+        volumes = {pair: float(d["unit_volume_24h"]) for pair, d in ticker["pairs"].items()}
+        pairs = liquid_pairs(exchange_info, volumes, args.min_volume)
+        print(f"ticker       : {ticker_path.name}  (polled {ticker['polled_at']})")
+        print(f"rule         : AssetType crypto, CanTrade, 24h traded value >= ${args.min_volume:,.0f}")
+        print(f"result       : {len(pairs)} pairs\n")
+        for pair in pairs:
+            print(f"  {pair:14s} ${volumes[pair] / 1e6:9.2f}M")
 
     if args.config:
         current = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))["pairs"]
         added, dropped = sorted(set(pairs) - set(current)), sorted(set(current) - set(pairs))
         print(f"\nagainst {args.config}: {len(current)} pairs, +{len(added)} / -{len(dropped)}")
+        vol = (lambda q: f"${volumes[q] / 1e6:9.2f}M") if volumes else (lambda q: "")
         for pair in added:
-            print(f"  +  {pair:14s} ${volumes.get(pair, 0.0) / 1e6:9.2f}M   above the floor, not in the config")
+            print(f"  +  {pair:14s} {vol(pair)}   derived, not in the config")
         for pair in dropped:
-            print(f"  -  {pair:14s} ${volumes.get(pair, 0.0) / 1e6:9.2f}M   in the config, below the floor now")
+            print(f"  -  {pair:14s} {vol(pair)}   in the config, not derived")
         if not added and not dropped:
             print("  (identical)")
 

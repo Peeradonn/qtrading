@@ -15,6 +15,7 @@ SNAPSHOT = {
         "NVDAB/USD": pair("NVDAB", "stock"),
         "ZZZB/USD": pair("ZZZB", "stock"),                 # no known underlying
         "OLD/USD": pair("OLD", "crypto", can_trade=False),
+        "TON/USD": pair("TON", "crypto"),                   # tradeable on Roostoo, no Binance history
     },
 }
 
@@ -37,6 +38,10 @@ def test_untradeable_and_unmapped_pairs_are_excluded():
     pairs = set(by_pair(build_universe(SNAPSHOT)))
     assert "OLD/USD" not in pairs
     assert "ZZZB/USD" not in pairs
+
+
+def test_a_crypto_pair_binance_does_not_carry_is_excluded():
+    assert "TON/USD" not in by_pair(build_universe(SNAPSHOT))
 
 
 # --- the liquidity floor: which pairs the ranking may choose from --------------------------------------------

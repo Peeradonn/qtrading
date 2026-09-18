@@ -242,6 +242,50 @@ def test_funding_filter_drops_crowded_assets_from_the_score():
     assert sig[("score", "B/USD")].iloc[-1] > 0
 
 
+def _liquidity_prices(n, vol_a, vol_b):
+    """Two identical rising price paths; only their dollar volume differs."""
+    return panel2({"A/USD": [100 + i for i in range(n)], "B/USD": [100 + i for i in range(n)]},
+                  volume={"A/USD": vol_a, "B/USD": vol_b})
+
+
+def test_liquidity_floor_masks_a_thin_asset_and_admits_a_liquid_one():
+    n = 400                                                   # hourly $ volume: A = $100k/h ($2.4M/day), B = $1M/h
+    prices = _liquidity_prices(n, [100_000.0] * n, [1_000_000.0] * n)
+    sig = Momentum(MomentumParams(liquidity_min_daily=5e6, **LONG)).signals(prices)
+    assert math.isnan(sig[("score", "A/USD")].iloc[-1])
+    assert sig[("score", "B/USD")].iloc[-1] > 0
+
+
+def test_liquidity_floor_admits_an_asset_only_once_its_trailing_volume_crosses():
+    n = 600                                                   # A is thin for 300 hours, then liquid
+    prices = _liquidity_prices(n, [100_000.0] * 300 + [1_000_000.0] * 300, [1_000_000.0] * n)
+    sig = Momentum(MomentumParams(liquidity_min_daily=5e6, liquidity_window_h=168, **LONG)).signals(prices)
+    a = sig[("score", "A/USD")]
+    assert math.isnan(a.iloc[299])                            # still thin
+    assert math.isnan(a.iloc[305])                            # 6 liquid hours in a 168h window: $3.2M/day, still out
+    assert a.iloc[350] > 0                                    # 51 liquid hours: $9.0M/day, admitted
+    assert a.iloc[-1] > 0
+
+
+def test_liquidity_band_keeps_an_admitted_asset_until_volume_falls_below_the_exit():
+    n = 700                                                   # liquid, then $4M/day (inside the band), then $1M/day
+    vol_a = [1_000_000.0] * 300 + [166_667.0] * 200 + [41_667.0] * 200
+    prices = _liquidity_prices(n, vol_a, [1_000_000.0] * n)
+    banded = Momentum(MomentumParams(liquidity_min_daily=5e6, liquidity_exit_daily=2.5e6, **LONG)).signals(prices)
+    flat = Momentum(MomentumParams(liquidity_min_daily=5e6, **LONG)).signals(prices)
+    assert banded[("score", "A/USD")].iloc[499] > 0           # $4M/day: below entry, above exit -> still in
+    assert math.isnan(flat[("score", "A/USD")].iloc[499])     # no band: below entry -> out
+    assert math.isnan(banded[("score", "A/USD")].iloc[-1])    # $1M/day: below exit -> out
+
+
+def test_liquidity_floor_is_off_by_default_and_without_a_volume_panel():
+    n = 400
+    thin = _liquidity_prices(n, [1.0] * n, [1.0] * n)
+    assert Momentum(MomentumParams(**LONG)).signals(thin)[("score", "A/USD")].iloc[-1] > 0
+    no_volume = panel2({"A/USD": [100 + i for i in range(n)], "B/USD": [100 + i for i in range(n)]})
+    assert Momentum(MomentumParams(liquidity_min_daily=5e6, **LONG)).signals(no_volume)[("score", "A/USD")].iloc[-1] > 0
+
+
 def test_selection_at_several_utc_hours_per_day():
     strat = Momentum(MomentumParams(k=2, buffer_rank=2, select_hours_utc=(0, 12)))
     mem = {}

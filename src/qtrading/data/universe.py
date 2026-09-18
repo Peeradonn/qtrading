@@ -22,6 +22,12 @@ TOKEN_SYMBOLS = {"COINB": "COINXUSDT", "CRCLB": "CRCLXUSDT", "GOOGLB": "GOOGLXUS
                  "NVDAB": "NVDAXUSDT", "TSLAB": "TSLAXUSDT", "SPCXB": "SPCXXUSDT"}
 
 
+# Roostoo crypto coins Binance does not list as {coin}USDT (checked against Binance exchangeInfo, 2026-09-18).
+# Left in the universe they would fetch empty every hour and never become eligible, so they are excluded here with a
+# warning, the way a stock with no known underlying is.
+NO_BINANCE = {"OMNI", "TON"}
+
+
 @dataclass(frozen=True)
 class Asset:
     pair: str          # Roostoo pair, e.g. "BTC/USD"
@@ -43,6 +49,9 @@ def build_universe(snapshot: dict) -> list[Asset]:
             continue
         coin, asset_type = d["Coin"], d.get("AssetType", "")
         if asset_type == "crypto":
+            if coin in NO_BINANCE:
+                log.warning("no Binance history for %s; excluded", pair)
+                continue
             assets.append(Asset(pair, coin, asset_type, "binance", f"{coin}USDT"))
         elif asset_type == "stock":
             ticker = STOCK_UNDERLYING.get(coin)

@@ -14,11 +14,23 @@ digest_every_h = 1             # hourly, like paper-core, so the three paper boo
 keep_awake = true              # this bot runs on a laptop; a suspended host silently stops trading
 # competition_start omitted: the activity floor is inactive during paper trading
 
-# The 35 most liquid crypto pairs on Roostoo at the 2026-09-14 snapshot, plus PAXG.
-pairs = ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "BNB/USD", "FIL/USD", "SUI/USD", "NEAR/USD",
-         "DOGE/USD", "UNI/USD", "TRX/USD", "TAO/USD", "ADA/USD", "PEPE/USD", "LINK/USD", "PUMP/USD", "LTC/USD",
-         "ARB/USD", "ENA/USD", "WLD/USD", "TRUMP/USD", "AVAX/USD", "AAVE/USD", "FET/USD", "XLM/USD", "ICP/USD",
-         "PAXG/USD", "ONDO/USD", "WLFI/USD", "CAKE/USD", "DOT/USD", "APT/USD", "XPL/USD", "PENGU/USD"]
+# The candidate pool: every crypto pair Roostoo will trade at the 2026-09-14 snapshot that Binance carries
+# (OMNI and TON have no Binance history; universe.py excludes them). The rolling liquidity rule under
+# [strategy] decides admission every hour, so this is a pool, not a selection. Reproduce it with
+# scripts/build_universe_list.py --pool.
+pairs = ["1000CHEEMS/USD", "AAVE/USD", "ADA/USD", "APT/USD", "ARB/USD",
+         "ASTER/USD", "AVAX/USD", "AVNT/USD", "BIO/USD", "BMT/USD",
+         "BNB/USD", "BONK/USD", "BTC/USD", "CAKE/USD", "CFX/USD",
+         "CRV/USD", "DOGE/USD", "DOT/USD", "EDEN/USD", "EIGEN/USD",
+         "ENA/USD", "ETH/USD", "FET/USD", "FIL/USD", "FLOKI/USD",
+         "FORM/USD", "HBAR/USD", "HEMI/USD", "ICP/USD", "LINEA/USD",
+         "LINK/USD", "LISTA/USD", "LTC/USD", "MIRA/USD", "NEAR/USD",
+         "ONDO/USD", "OPEN/USD", "PAXG/USD", "PENDLE/USD", "PENGU/USD",
+         "PEPE/USD", "PLUME/USD", "POL/USD", "PUMP/USD", "S/USD",
+         "SEI/USD", "SHIB/USD", "SOL/USD", "SOMI/USD", "STO/USD",
+         "SUI/USD", "TAO/USD", "TRUMP/USD", "TRX/USD", "TUT/USD",
+         "UNI/USD", "VIRTUAL/USD", "WIF/USD", "WLD/USD", "WLFI/USD",
+         "XLM/USD", "XPL/USD", "XRP/USD", "ZEC/USD", "ZEN/USD"]
 
 [strategy]                     # research run 9 (2026-09-17): equal weight, 3%/day target, everything else the core's
 lookbacks_h = [72, 168, 336]
@@ -27,6 +39,8 @@ vol_window_h = 168             # warm-up floor for the volatility estimate
 vol_model = "ewma"             # chosen on forecast error, not returns - see docs/whitepaper.md
 ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
 min_age_h = 720
+liquidity_min_daily = 5_000_000   # the liquidity floor as a rolling rule: in the pool once trailing
+                                   #   7-day Binance volume is $5M/day (universe_bias_study, 2026-09-18)
 k = 6                          # keep at 6: the ratio edge of this book does not survive K=8
 buffer_rank = 12
 select_hour_utc = 0            # select at 00:00 UTC, as backtested
