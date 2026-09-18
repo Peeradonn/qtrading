@@ -38,6 +38,8 @@ ewma_lambda = 0.99             # ~3-day half-life on hourly squared returns
 min_age_h = 720
 liquidity_min_daily = 5_000_000   # the liquidity floor as a rolling rule: in the pool once trailing
                                    #   7-day Binance volume is $5M/day (universe_bias_study, 2026-09-18)
+liquidity_window_h = 168          # ...averaged over the trailing 7 days. This is the code's default, written
+                                   #   out so the whole rule can be read from this file
 k = 6
 buffer_rank = 12
 select_hour_utc = 0            # select at 00:00 UTC, as backtested - not 24h after start-up
