@@ -58,7 +58,10 @@ the first-trade deadline on its own.
 
 - Code: commit, `git -C /opt/qtrading pull --ff-only`, `sudo systemctl restart qtrading@eqvt3`. The journal stamps the
   new commit from the next cycle.
-- Config, including `mode`: commit and pull. `mode` is re-read every cycle; no restart needed.
+- Config, including `mode`: commit and pull. `mode` is re-read every cycle; no restart needed. The exception is a
+  config that adds or renames a key. The running process parses the whole file with the code it started with, so
+  a key it does not know fails every cycle, placing no orders, until a restart; this stopped the paper bots for two
+  cycles on 2026-09-18. Treat such a change as code: pull and restart in one step.
 - `mode = "hold"` is a fault stop, not a pause. Use it only for a genuine malfunction, say what broke in the commit
   message, and set it back to `"trade"` with the fix. Stopping the bot because you dislike the market is the
   intervention the rules prohibit.
