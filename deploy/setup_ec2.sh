@@ -80,8 +80,18 @@ for bot in "${BOTS[@]}"; do
     systemctl enable "qtrading@$bot"
 done
 
+# The journal stamps every record with the running commit, asked of git once at start-up. If the service user cannot
+# ask -- a repo it does not own, a partial .git -- every record says "unknown" for as long as the bot runs. Check it
+# here, as that user, and fail the install rather than find out from a judge. (Asked as root this line can also print
+# an empty hash under Session Manager, where SUDO_UID is not the repo's owner.)
+COMMIT="$(sudo -u "$RUN_AS" git -C "$APP" rev-parse --short HEAD)" || {
+    echo "ERROR: $RUN_AS cannot read the git commit in $APP; the journal would stamp 'unknown' on every record."
+    echo "       check ownership (chown -R $RUN_AS:$RUN_AS $APP) and that .git is complete, then re-run."
+    exit 1
+}
+
 echo
-echo "installed $APP at commit $(git -C "$APP" rev-parse --short HEAD); enabled: ${BOTS[*]}"
+echo "installed $APP at commit $COMMIT; enabled: ${BOTS[*]}"
 echo "check one keyless cycle:  sudo -u $RUN_AS $APP/.venv/bin/python $APP/scripts/run_bot.py --config $APP/configs/paper-eqvt3.toml --once"
 echo "start:                    sudo systemctl start ${BOTS[*]/#/qtrading@}"
 echo "watch:                    journalctl -u 'qtrading@*' -f"

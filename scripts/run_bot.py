@@ -24,7 +24,7 @@ from qtrading.data.yahoo import YahooSource
 from qtrading.engine.alerts import make_alerter, make_heartbeat
 from qtrading.engine.config import load_config
 from qtrading.engine.exchange import PaperExchange, RoostooExchange
-from qtrading.engine.journal import Journal, current_commit
+from qtrading.engine.journal import Journal, commit_warning, current_commit
 from qtrading.engine.keepawake import keep_system_awake
 from qtrading.engine.lock import AlreadyRunning, acquire, release
 from qtrading.engine.loop import Bot
@@ -116,10 +116,15 @@ def main() -> int:
     except AlreadyRunning as e:
         log.error("refusing to start: %s", e)
         return 2
-    log.info("starting %s (%s exchange, %d pairs, commit %s)", cfg.name, cfg.exchange, len(bot.universe), current_commit(ROOT))
+    commit = bot.journal.commit                     # resolved once in build(): the log, the alert and the journal agree
+    log.info("starting %s (%s exchange, %d pairs, commit %s)", cfg.name, cfg.exchange, len(bot.universe), commit)
     if keep_system_awake(cfg.keep_awake):
         log.info("asked the host not to suspend while this bot runs")
-    bot.alert(f"[{cfg.name}] started on {cfg.exchange} at commit {current_commit(ROOT)}")
+    bot.alert(f"[{cfg.name}] started on {cfg.exchange} at commit {commit}")
+    warning = commit_warning(cfg.name, commit)      # not fatal: a missed first trade is worse than a bad stamp
+    if warning:
+        log.warning(warning)
+        bot.alert(warning)
 
     try:
         if args.once:

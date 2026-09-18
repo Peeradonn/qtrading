@@ -51,6 +51,7 @@ the first-trade deadline on its own.
 | `OrderUncertain` | An order was sent and the response was lost | The bot stopped that cycle rather than risk a duplicate fill. Check `/v3/query_order`; the next cycle reconciles from the wallet. |
 | Rate-limit failures | More than 30 calls in a minute | Should not happen at two-second pacing. If it does, raise `min_interval_s` in a commit and restart. |
 | Service restarted by systemd | The process died | Read `journalctl -u qtrading@eqvt3 --since -1h` for the traceback. If it repeats, treat as a fault, below. |
+| "git could not name the running commit" at start-up | The journal is stamping `unknown`: the trade log cannot be tied to code, which is the evidence Screen 1 asks for | The bot keeps trading. As the service user run `git -C /opt/qtrading rev-parse --short HEAD`; fix what it complains about (ownership, a partial `.git`), then `systemctl restart`. The stamp is read once at start-up, so only a restart clears it. |
 | Healthchecks "DOWN" | No cycle completed within the grace period | Check the service is running and the host is up. |
 
 ## Changing anything
@@ -77,7 +78,8 @@ stays long-only and nothing else changes. If all hold, the competition config is
 ## Day one (October 1 — first trade in by 8pm HKT)
 
 1. Official keys into `.env`; `sudo systemctl restart qtrading@eqvt3`.
-2. Watch the first cycle in the log: reconcile shows the starting cash, targets are set, orders fill.
+2. Watch the first cycle in the log: reconcile shows the starting cash, targets are set, orders fill. The start-up
+   line names a commit hash, not `unknown`; `tail -1 logs/eqvt3.jsonl` shows the same hash in `"commit"`.
 3. Confirm the fills on the Roostoo app leaderboard, and count the bots in the region while you are there.
 4. Confirm the healthchecks ping and the Discord digest arrived.
 
