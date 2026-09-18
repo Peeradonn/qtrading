@@ -6,7 +6,8 @@ from .activity import ActivityTracker
 
 
 def cycle_digest(name: str, now: pd.Timestamp, result, state: State, tracker: ActivityTracker,
-                 initial_equity: float | None) -> str:
+                 initial_equity: float | None, first_order_at: pd.Timestamp | None = None,
+                 up_since: pd.Timestamp | None = None) -> str:
     status = "ERROR" if result.reason == "error" else result.reason.upper()
     lines = [f"[{name}] {now:%Y-%m-%d %H:%M} UTC — {status}"]
 
@@ -24,8 +25,29 @@ def cycle_digest(name: str, now: pd.Timestamp, result, state: State, tracker: Ac
         pace = "BEHIND PACE — forcing rebalances" if result.behind_pace else "pace OK"
         lines.append(f"active days {active}/{tracker.required} ({pace})")
     else:
-        lines.append("active days: outside competition window")
+        lines.append(_activity_outside_window(now, tracker, first_order_at, up_since))
 
     fills = "; ".join(f"{f.side} {f.quantity:g} {f.pair} @ {f.price:g}" for f in result.fills) or "none"
     lines.append(f"fills: {fills}")
     return "\n".join(lines)
+
+
+def _activity_outside_window(now: pd.Timestamp, tracker: ActivityTracker, first_order_at: pd.Timestamp | None,
+                             up_since: pd.Timestamp | None) -> str:
+    """Paper trading has no competition window, so count activity from the bot's first order instead."""
+    uptime = f" | up {_duration(now - up_since)}" if up_since is not None else ""
+    days = tracker.active_days()
+    if not days:
+        return f"active days: no orders yet{uptime}"
+    first_day = min(days)
+    since = (now.date() - first_day).days + 1                  # calendar days, including today
+    # the exact time is known only for orders placed since it was first recorded; older state has the day alone
+    first = f"{first_order_at:%Y-%m-%d %H:%M} UTC" if first_order_at is not None else f"{first_day:%Y-%m-%d}"
+    return f"active days {len(days)}/{since} since first order {first}{uptime}"
+
+
+def _duration(delta: pd.Timedelta) -> str:
+    minutes = max(int(delta.total_seconds() // 60), 0)
+    days, rest = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(rest, 60)
+    return f"{days}d {hours}h" if days else f"{hours}h {minutes}m"

@@ -59,6 +59,7 @@ class Bot:
         self.mode_override: str | None = None
         self._state = self._load_state()
         self._last_state: State | None = None
+        self._up_since = pd.Timestamp.now(tz="UTC")
         if "activity" in self._state:
             self._tracker = ActivityTracker.from_json(self._state["activity"])
         else:
@@ -88,7 +89,10 @@ class Bot:
         self.heartbeat(result.reason != "error")
         if mode != "hold" and cfg.digest_every_h and now.hour % cfg.digest_every_h == 0:
             state = self._last_state or State(holdings={}, weights={}, cash=0.0, equity=0.0, peak_equity=0.0)
-            self.alert(cycle_digest(cfg.name, now, result, state, self._tracker, self._state.get("initial_equity")))
+            first_order_at = self._state.get("first_order_at")
+            self.alert(cycle_digest(cfg.name, now, result, state, self._tracker, self._state.get("initial_equity"),
+                                    first_order_at=pd.Timestamp(first_order_at) if first_order_at else None,
+                                    up_since=self._up_since))
         return result
 
     def _cycle(self, now: pd.Timestamp, mode: str) -> CycleResult:
@@ -191,6 +195,7 @@ class Bot:
                                 status=fill.status)
             fills.append(fill)
             self._tracker.record(now.date())
+            self._state.setdefault("first_order_at", now.isoformat())
         return fills
 
     def _load_state(self) -> dict:

@@ -103,6 +103,15 @@ def test_second_cycle_within_band_places_nothing(tmp_path):
     assert result.fills == []
 
 
+def test_the_first_order_time_is_kept_across_later_orders(tmp_path):
+    bot, ex = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5}))
+    bot.run_once(NOW)
+    bot.mode_override = "liquidate"
+    bot.run_once(NOW + pd.Timedelta(hours=1))
+    saved = json.loads((tmp_path / "s.json").read_text())
+    assert pd.Timestamp(saved["first_order_at"]) == NOW
+
+
 # --- modes --------------------------------------------------------------------
 
 def test_hold_mode_trades_nothing(tmp_path):
