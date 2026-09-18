@@ -1,6 +1,7 @@
 """The hourly cycle: reconcile -> decide -> plan -> execute -> journal, and every way it must refuse to trade."""
 import datetime as dt
 import json
+import math
 
 import pandas as pd
 import pytest
@@ -13,7 +14,7 @@ from qtrading.engine.journal import Journal
 from qtrading.engine.loop import Bot
 from qtrading.roostoo.errors import OrderUncertain
 from qtrading.roostoo.models import PairInfo
-from qtrading.strategy.momentum import MomentumParams
+from qtrading.strategy.momentum import Momentum, MomentumParams
 
 NOW = pd.Timestamp("2026-10-03 14:00", tz="UTC")
 PAIRS = ("BTC/USD", "ETH/USD")
@@ -274,6 +275,67 @@ def test_a_generous_budget_is_not_spent_during_the_cycle(tmp_path):
     bot = Bot(cfg, ConstantTargets({"BTC/USD": 0.5}), ex, store, UNIVERSE, Journal(cfg.paths.journal, commit="t"))
     bot.run_once(NOW)
     assert store.deadline_seen() is False
+
+
+# --- the ranking the decision was made from -------------------------------------------------------------------
+
+def moving_panel(flat_eth: bool = False, end: pd.Timestamp = NOW) -> Prices:
+    """A panel with real trends and real volatility, so Momentum produces scores that can be ranked.
+    Deterministic: a linear drift times a sine, BTC trending four times as fast as ETH."""
+    idx = pd.date_range(end=end, periods=24 * 60, freq="1h", name="time")
+    close = pd.DataFrame({"BTC/USD": [100 * (1 + 0.002 * i) * (1 + 0.01 * math.sin(i / 7)) for i in range(len(idx))],
+                          "ETH/USD": 100.0 if flat_eth else
+                                     [100 * (1 + 0.0005 * i) * (1 + 0.01 * math.sin(i / 5)) for i in range(len(idx))]},
+                         index=idx)
+    return Prices(close=close, stale=pd.DataFrame(False, index=idx, columns=list(PAIRS)))
+
+
+def strict_json(line: str) -> dict:
+    """json.loads accepts the bare NaN token by default; a judge's parser need not. Reject it here."""
+    def reject(token):
+        raise AssertionError(f"journal is not valid JSON: {token}")
+    return json.loads(line, parse_constant=reject)
+
+
+def last_cycle_end(tmp_path) -> dict:
+    ends = [strict_json(line) for line in (tmp_path / "j.jsonl").read_text().splitlines()
+            if json.loads(line)["kind"] == "cycle_end"]
+    return ends[-1]
+
+
+def test_cycle_end_records_every_pair_score_and_rank(tmp_path):
+    """Why this name and not that one: `targets` says what was held, `ranking` says what was considered."""
+    bot, _ = make_bot(tmp_path, Momentum(MomentumParams(pairs=PAIRS)), prices=moving_panel())
+    bot.run_once(NOW)
+    ranking = last_cycle_end(tmp_path)["ranking"]
+    assert set(ranking) == set(PAIRS)
+    assert ranking["BTC/USD"]["rank"] == 1 and ranking["ETH/USD"]["rank"] == 2      # BTC trends faster
+    assert ranking["BTC/USD"]["score"] > ranking["ETH/USD"]["score"] > 0
+    assert ranking["BTC/USD"]["vol_daily"] > 0
+
+
+def test_a_pair_with_no_score_is_recorded_null_and_left_unranked(tmp_path):
+    """A flat price has no volatility, so it has no risk-adjusted score. The selection drops it; so does the
+    journal — as null, never as the NaN token, which is not valid JSON."""
+    bot, _ = make_bot(tmp_path, Momentum(MomentumParams(pairs=PAIRS)), prices=moving_panel(flat_eth=True))
+    bot.run_once(NOW)
+    ranking = last_cycle_end(tmp_path)["ranking"]
+    assert ranking["ETH/USD"] == {"score": None, "vol_daily": 0.0, "rank": None}
+    assert ranking["BTC/USD"]["rank"] == 1
+
+
+def test_a_strategy_that_publishes_no_score_ranks_nothing(tmp_path):
+    """The baselines and the engine's test doubles do not rank; the cycle still trades and still journals."""
+    bot, _ = make_bot(tmp_path, ConstantTargets({"BTC/USD": 0.5}))
+    result = bot.run_once(NOW)
+    assert [f.side for f in result.fills] == ["BUY"]
+    assert last_cycle_end(tmp_path)["ranking"] == {}
+
+
+def test_liquidate_ranks_nothing_because_it_consults_no_signal(tmp_path):
+    bot, _ = make_bot(tmp_path, Momentum(MomentumParams(pairs=PAIRS)), prices=moving_panel(), mode="liquidate")
+    bot.run_once(NOW)
+    assert last_cycle_end(tmp_path)["ranking"] == {}
 
 
 # --- shorts: only when the config says the exchange's mechanics have been verified ---------------------------

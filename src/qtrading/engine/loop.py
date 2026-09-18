@@ -3,11 +3,13 @@
 run_once(now): reload mode -> refresh market data -> check freshness -> reconcile from the exchange ->
 sanity-check equity -> strategy targets (with the activity floor) -> plan_orders -> execute (sells first,
 stop on any uncertainty) -> persist memory and state -> journal. Any exception anywhere means no orders.
+Every cycle journals the ranking it decided from, so a holding can be explained after the fact.
 Every cycle ends with a heartbeat ping (success or fail) and, on cadence, a digest to the operator.
 """
 import copy
 import datetime as dt
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +27,14 @@ from .report import cycle_digest
 from .state import load_memory, reconcile, save_memory
 
 FAR_FUTURE = dt.date(2099, 1, 1)
+HOURS_PER_DAY = 24
+
+
+def _finite(x, digits: int) -> float | None:
+    """A JSON-safe number. NaN and infinities become null rather than the bare NaN token json.dumps emits,
+    which is not valid JSON and would break a judge's parser reading the journal."""
+    x = float(x)
+    return round(x, digits) if math.isfinite(x) else None
 
 
 class StaleData(Exception):
@@ -126,13 +136,16 @@ class Bot:
 
         behind = self._tracker.behind_pace(now.date())
         memory_in = copy.deepcopy(memory)                      # the inputs replay needs, before targets() mutates them
+        ranking: dict[str, dict] = {}
         if mode == "liquidate":
             targets = {}
         else:
             if behind:
                 memory["force_rebalance"] = True
             signals = self.strategy.signals(prices)
-            targets = self.strategy.targets(now, signals.iloc[-1], state) or {}
+            row = signals.iloc[-1]                             # the one row the decision is made from...
+            ranking = self._ranking(row)                       # ...journalled alongside the targets it produced
+            targets = self.strategy.targets(now, row, state) or {}
             memory.pop("force_rebalance", None)
 
         stale_now = {p for p in self._pairs if bool(prices.stale[p].iloc[-1])}
@@ -150,8 +163,27 @@ class Bot:
                             active_days=len(self._tracker.active_days()), duration_s=self._elapsed(),
                             state={"holdings": state.holdings, "weights": state.weights, "cash": state.cash,
                                    "equity": state.equity, "peak_equity": state.peak_equity},
-                            memory_in=memory_in)
+                            memory_in=memory_in, ranking=ranking)
         return CycleResult(mode, "ok", targets, orders, fills, behind, state.equity)
+
+    def _ranking(self, row: pd.Series) -> dict[str, dict]:
+        """Every pair's score, volatility and rank at this decision: the evidence for why the book is what it is.
+
+        `targets` records what was held; this records what was considered and how close it came. Ranks run from 1
+        (best score) over the pairs the selection could choose from, mirroring `_select`: a pair with no score —
+        warming up, ineligible, or a sleeve held by rule — is recorded null and left unranked. Strategies that do
+        not publish a score (the baselines, and the engine's test doubles) rank nothing.
+        """
+        levels = row.index.get_level_values(0) if isinstance(row.index, pd.MultiIndex) else []
+        if not {"score", "vol"} <= set(levels):
+            return {}
+        score, vol = row["score"], row["vol"]
+        ranked = score.dropna().sort_values(ascending=False)
+        rank = {pair: i + 1 for i, pair in enumerate(ranked.index)}
+        return {pair: {"score": _finite(score.get(pair, float("nan")), 4),
+                       "vol_daily": _finite(vol.get(pair, float("nan")) * math.sqrt(HOURS_PER_DAY), 5),
+                       "rank": rank.get(pair)}
+                for pair in self._pairs}
 
     # ---- pieces -------------------------------------------------------------
 
