@@ -2,7 +2,7 @@
 
 One page for the operator. The rules that shape it: the bot must trade autonomously; stopping it by hand,
 overriding it, or trading through the API yourself is prohibited; every change must be a commit; the first trade
-must execute by October 1, 8pm HKT; the system liquidates on October 13.
+must execute by October 1, 8pm HKT; the system liquidates on October 14.
 
 ## Deploy (once, on the Sydney EC2 host)
 
@@ -72,16 +72,16 @@ quantity of an alt the account does not hold, then read `/v3/balance`. Adopt onl
 goes negative, portfolio value moves one-for-one with the price, nothing is charged for holding it for a day, a
 BUY closes it, and the 1x limit rejects new exposure instead of liquidating. If any of those fails, the entry
 stays long-only and nothing else changes. If all hold, the competition config is `eqvt3.toml` plus the
-`allow_short` line and the five short-leg lines from the paper config, committed before the 30th.
+`allow_short` line and the five short-leg lines from the paper config, committed before Oct 1.
 
-## Day one (September 30)
+## Day one (October 1 — first trade in by 8pm HKT)
 
 1. Official keys into `.env`; `sudo systemctl restart qtrading@eqvt3`.
 2. Watch the first cycle in the log: reconcile shows the starting cash, targets are set, orders fill.
 3. Confirm the fills on the Roostoo app leaderboard, and count the bots in the region while you are there.
 4. Confirm the healthchecks ping and the Discord digest arrived.
 
-## Last day (October 13)
+## Last day (October 14)
 
 The system liquidates. After it has, `sudo systemctl stop qtrading@eqvt3` to save resources, and tag the repository at
 the commit that traded.

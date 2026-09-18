@@ -1,17 +1,18 @@
 # qtrading — momentum-rotation bot for Roostoo
 
 Entry for the **HK vs Australia vs India Quant Trading Hackathon 2026** (Susquehanna × Roostoo).
-A long-only, rule-based momentum-rotation strategy trading a $1M mock spot portfolio autonomously
+A long-only, rule-based momentum-rotation strategy trading a $100k mock spot portfolio autonomously
 on the Roostoo exchange, designed around the competition's scoring (return, then
 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar).
 
 **Status (2026-09-17):** the core was locked on 2026-09-16 after six research runs and an out-of-sample check; runs 7–11
 mapped the exposure frontier, chose the competition entry on it (whitepaper §5.2) and closed the stocks question: the same signal with equal weights
 and a 3%/day volatility target, `configs/eqvt3.toml`, with the core kept as the fallback. Live engine complete; three books
-(core, entry, entry with a short leg) paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Sep 30.
+(core, entry, entry with a short leg) paper-trading on real Roostoo prices. Next: EC2 deployment, then the competition account on Oct 1.
 **Start here:** [the whitepaper](docs/whitepaper.md) explains the strategy, the reasoning about the scoring
 function, the evidence, and every hypothesis we tested and rejected. The [design doc](docs/superpowers/specs/2026-09-14-roostoo-bot-design.md)
-is the full decision log and research history.
+is the full decision log and research history; [docs/competition-brief.md](docs/competition-brief.md) is
+the organizers' rules, timeline and scoring, as received.
 
 **The strategy in one paragraph.** Hourly, score the 35 most liquid crypto pairs (plus gold) on their 3-, 7- and
 14-day returns divided by their own volatility. Once a day, hold the top 6, keeping a holding while it stays in
@@ -39,7 +40,7 @@ data/snapshots/         committed exchangeInfo snapshot the universe is built fr
 data/cache/             (git-ignored) parquet price cache — populate with scripts/fetch_history.py
 tests/                  offline unit tests (pytest)
 scripts/                research runs, data fetches, the bot runner
-docs/                   design spec and research log
+docs/                   design spec, research log, and the organizers' brief
 ```
 
 ## Setup

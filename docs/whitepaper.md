@@ -1,7 +1,7 @@
 # A Volatility-Managed Momentum Rotation Strategy for the Roostoo Mock Exchange
 
 **HK vs Australia vs India Quant Trading Hackathon 2026** · Susquehanna × Roostoo
-Repository: `qtrading` · Strategy locked 2026-09-16 · Live 2026-09-30 → 2026-10-13
+Repository: `qtrading` · Strategy locked 2026-09-16 · Live 2026-10-01 → 2026-10-14
 
 ---
 
