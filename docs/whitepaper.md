@@ -63,7 +63,10 @@ is either held or in cash. Commission is 0.1% on market orders and 0.05%
 on limit orders, and there is no historical price endpoint, so signals are computed from Binance's public hourly
 candles while Roostoo is used for execution and portfolio state.
 
-We trade the **35 crypto pairs above $5M daily volume, plus PAXG**. Tokenised equities are not in the book, and
+We trade the **35 crypto pairs above $5M daily volume, plus PAXG** (gold clears the floor on its own, so it
+needs no exception). `scripts/build_universe_list.py` derives that list by rule from the committed
+exchangeInfo and ticker snapshots, so the floor can be audited and re-applied rather than taken on trust.
+Tokenised equities are not in the book, and
 the reason changed on the last day of research. We had assumed they price only during US hours, so that at a
 00:00 UTC decision every one of them is stale; that was an artefact of our data, the underlying share's history.
 Roostoo's tokens price around the clock: seven hours after the US close, every one showed a live bid and ask and

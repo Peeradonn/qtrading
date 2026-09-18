@@ -1,5 +1,5 @@
 """Universe: Roostoo exchangeInfo snapshot -> tradeable assets, each mapped to a data source and symbol."""
-from qtrading.data.universe import Asset, build_universe
+from qtrading.data.universe import Asset, build_universe, liquid_pairs
 
 
 def pair(coin, asset_type, can_trade=True):
@@ -37,3 +37,38 @@ def test_untradeable_and_unmapped_pairs_are_excluded():
     pairs = set(by_pair(build_universe(SNAPSHOT)))
     assert "OLD/USD" not in pairs
     assert "ZZZB/USD" not in pairs
+
+
+# --- the liquidity floor: which pairs the ranking may choose from --------------------------------------------
+
+VOLUMES = {"BTC/USD": 900e6, "ETH/USD": 600e6, "TINY/USD": 4.8e6, "EDGE/USD": 5e6, "NVDAB/USD": 50e6}
+LIQUID_SNAPSHOT = {"TradePairs": {
+    "BTC/USD": pair("BTC", "crypto"),
+    "ETH/USD": pair("ETH", "crypto"),
+    "TINY/USD": pair("TINY", "crypto"),                    # trades, but below the floor
+    "EDGE/USD": pair("EDGE", "crypto"),                    # exactly at the floor
+    "QUIET/USD": pair("QUIET", "crypto"),                  # tradeable, absent from the ticker entirely
+    "OLD/USD": pair("OLD", "crypto", can_trade=False),     # delisted, whatever its volume
+    "NVDAB/USD": pair("NVDAB", "stock"),                   # liquid, but excluded by rule
+}}
+
+
+def test_liquid_pairs_keeps_tradeable_crypto_above_the_floor_ordered_by_volume():
+    assert liquid_pairs(LIQUID_SNAPSHOT, VOLUMES, 5_000_000) == ["BTC/USD", "ETH/USD", "EDGE/USD"]
+
+
+def test_the_floor_is_inclusive_so_the_rule_does_not_turn_on_a_rounding_error():
+    assert "EDGE/USD" in liquid_pairs(LIQUID_SNAPSHOT, VOLUMES, 5_000_000)
+    assert "EDGE/USD" not in liquid_pairs(LIQUID_SNAPSHOT, VOLUMES, 5_000_001)
+
+
+def test_a_pair_missing_from_the_ticker_is_dropped_rather_than_silently_kept():
+    assert "QUIET/USD" not in liquid_pairs(LIQUID_SNAPSHOT, VOLUMES, 5_000_000)
+
+
+def test_tokenised_equities_are_excluded_by_rule_however_liquid():
+    assert "NVDAB/USD" not in liquid_pairs(LIQUID_SNAPSHOT, VOLUMES, 1.0)
+
+
+def test_a_pair_the_exchange_will_not_trade_is_excluded():
+    assert "OLD/USD" not in liquid_pairs(LIQUID_SNAPSHOT, {**VOLUMES, "OLD/USD": 900e6}, 5_000_000)

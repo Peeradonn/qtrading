@@ -55,6 +55,19 @@ def build_universe(snapshot: dict) -> list[Asset]:
     return assets
 
 
+def liquid_pairs(snapshot: dict, volumes: dict[str, float], min_volume: float) -> list[str]:
+    """The crypto pairs the ranking may choose from: tradeable, and liquid enough to size a position in.
+
+    Ordered by 24h traded value, descending. Tokenised equities are excluded by rule rather than by volume —
+    whitepaper section 7 rejected them for the entry — and gold needs no special case, clearing the floor on its
+    own. A pair absent from `volumes` is treated as having traded nothing, so a quiet pair is dropped rather than
+    silently kept.
+    """
+    tradeable = {pair: volumes.get(pair, 0.0) for pair, d in snapshot["TradePairs"].items()
+                 if d.get("CanTrade") and d.get("AssetType") == "crypto"}
+    return sorted((p for p, v in tradeable.items() if v >= min_volume), key=lambda p: (-tradeable[p], p))
+
+
 def token_assets(snapshot: dict) -> list[Asset]:
     """The stock pairs whose 24/7 token history Bybit publishes, as assets sourced from Bybit."""
     return [Asset(pair, d["Coin"], "stock", "bybit", TOKEN_SYMBOLS[d["Coin"]])

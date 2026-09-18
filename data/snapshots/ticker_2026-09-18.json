@@ -1,0 +1,351 @@
+{
+ "polled_at": "2026-09-18T06:19:48.452005+00:00",
+ "source": "Roostoo GET /v3/ticker",
+ "note": "24h traded value in USD (UnitTradeValue), the input to the universe's liquidity floor",
+ "pairs": {
+  "1000CHEEMS/USD": {
+   "last": 0.000522,
+   "unit_volume_24h": 439550.246168
+  },
+  "AAVE/USD": {
+   "last": 134.06,
+   "unit_volume_24h": 19177290.91937
+  },
+  "ADA/USD": {
+   "last": 0.2132,
+   "unit_volume_24h": 37618081.3833
+  },
+  "AMDB/USD": {
+   "last": 549.92,
+   "unit_volume_24h": 890101.98863
+  },
+  "APT/USD": {
+   "last": 0.665,
+   "unit_volume_24h": 16113272.40163
+  },
+  "ARB/USD": {
+   "last": 0.211,
+   "unit_volume_24h": 71778918.58119
+  },
+  "ASTER/USD": {
+   "last": 0.748,
+   "unit_volume_24h": 8361641.4104
+  },
+  "AVAX/USD": {
+   "last": 7.885,
+   "unit_volume_24h": 24094172.99236
+  },
+  "AVNT/USD": {
+   "last": 0.1006,
+   "unit_volume_24h": 440411.56313
+  },
+  "BIO/USD": {
+   "last": 0.02639,
+   "unit_volume_24h": 1043126.018409
+  },
+  "BMT/USD": {
+   "last": 0.01888,
+   "unit_volume_24h": 1153129.306806
+  },
+  "BNB/USD": {
+   "last": 753.18,
+   "unit_volume_24h": 116579593.01415
+  },
+  "BONK/USD": {
+   "last": 2.81e-06,
+   "unit_volume_24h": 2433400.7212282
+  },
+  "BTC/USD": {
+   "last": 77537.96,
+   "unit_volume_24h": 963422418.214543
+  },
+  "CAKE/USD": {
+   "last": 2.482,
+   "unit_volume_24h": 11362192.12437
+  },
+  "CBRSB/USD": {
+   "last": 196.21,
+   "unit_volume_24h": 322913.60716
+  },
+  "CFX/USD": {
+   "last": 0.04746,
+   "unit_volume_24h": 581166.87907
+  },
+  "COINB/USD": {
+   "last": 177.15,
+   "unit_volume_24h": 1289152.90876
+  },
+  "CRCLB/USD": {
+   "last": 86.69,
+   "unit_volume_24h": 32187559.7875
+  },
+  "CRV/USD": {
+   "last": 0.337,
+   "unit_volume_24h": 4773660.16715
+  },
+  "DOGE/USD": {
+   "last": 0.08429,
+   "unit_volume_24h": 50762534.69403
+  },
+  "DOT/USD": {
+   "last": 1.127,
+   "unit_volume_24h": 14306652.08691
+  },
+  "EDEN/USD": {
+   "last": 0.05164,
+   "unit_volume_24h": 4087969.767192
+  },
+  "EIGEN/USD": {
+   "last": 0.21,
+   "unit_volume_24h": 2399727.756065
+  },
+  "ENA/USD": {
+   "last": 0.1633,
+   "unit_volume_24h": 41945659.138008
+  },
+  "ETH/USD": {
+   "last": 2485.48,
+   "unit_volume_24h": 642467644.528756
+  },
+  "FET/USD": {
+   "last": 0.1797,
+   "unit_volume_24h": 14505915.91449
+  },
+  "FIL/USD": {
+   "last": 0.8614,
+   "unit_volume_24h": 12346550.725284
+  },
+  "FLOKI/USD": {
+   "last": 2.471e-05,
+   "unit_volume_24h": 1751376.66322565
+  },
+  "FORM/USD": {
+   "last": 0.2656,
+   "unit_volume_24h": 1332373.69061
+  },
+  "GLWB/USD": {
+   "last": 150.34,
+   "unit_volume_24h": 170365.71321
+  },
+  "GOOGLB/USD": {
+   "last": 355.18,
+   "unit_volume_24h": 6955437.09121
+  },
+  "HBAR/USD": {
+   "last": 0.07616,
+   "unit_volume_24h": 7758016.41573
+  },
+  "HEMI/USD": {
+   "last": 0.00642,
+   "unit_volume_24h": 2154583.991156
+  },
+  "ICP/USD": {
+   "last": 2.754,
+   "unit_volume_24h": 4826776.27672
+  },
+  "INTCB/USD": {
+   "last": 111.18,
+   "unit_volume_24h": 2214773.45813
+  },
+  "LINEA/USD": {
+   "last": 0.002604,
+   "unit_volume_24h": 512365.603153
+  },
+  "LINK/USD": {
+   "last": 11.763,
+   "unit_volume_24h": 25017865.23615
+  },
+  "LISTA/USD": {
+   "last": 0.0782,
+   "unit_volume_24h": 454521.99413
+  },
+  "LITEB/USD": {
+   "last": 914.94,
+   "unit_volume_24h": 778800.2374
+  },
+  "LTC/USD": {
+   "last": 54.85,
+   "unit_volume_24h": 15566343.16678
+  },
+  "METAB/USD": {
+   "last": 685.64,
+   "unit_volume_24h": 154167.76485
+  },
+  "MIRA/USD": {
+   "last": 0.04611,
+   "unit_volume_24h": 522952.326616
+  },
+  "MSFTB/USD": {
+   "last": 498.61,
+   "unit_volume_24h": 126754.17423
+  },
+  "MSTRB/USD": {
+   "last": 135.76,
+   "unit_volume_24h": 13844136.36773
+  },
+  "MUB/USD": {
+   "last": 989.59,
+   "unit_volume_24h": 4089291.94163
+  },
+  "NBISB/USD": {
+   "last": 218.37,
+   "unit_volume_24h": 1089014.66976
+  },
+  "NEAR/USD": {
+   "last": 3.456,
+   "unit_volume_24h": 317011584.0929
+  },
+  "NVDAB/USD": {
+   "last": 221.18,
+   "unit_volume_24h": 5891250.19117
+  },
+  "ONDO/USD": {
+   "last": 0.384,
+   "unit_volume_24h": 33666972.21325
+  },
+  "OPEN/USD": {
+   "last": 0.1381,
+   "unit_volume_24h": 401447.71758
+  },
+  "PAXG/USD": {
+   "last": 4382.32,
+   "unit_volume_24h": 20047368.100536
+  },
+  "PENDLE/USD": {
+   "last": 2.575,
+   "unit_volume_24h": 6806528.1948
+  },
+  "PENGU/USD": {
+   "last": 0.007473,
+   "unit_volume_24h": 8938047.910297
+  },
+  "PEPE/USD": {
+   "last": 3.66e-06,
+   "unit_volume_24h": 25878987.04668455
+  },
+  "PLTRB/USD": {
+   "last": 176.6,
+   "unit_volume_24h": 85877.2216
+  },
+  "PLUME/USD": {
+   "last": 0.01352,
+   "unit_volume_24h": 1693708.31268
+  },
+  "POL/USD": {
+   "last": 0.10001,
+   "unit_volume_24h": 12345751.043807
+  },
+  "PUMP/USD": {
+   "last": 0.004267,
+   "unit_volume_24h": 27449616.095079
+  },
+  "QCOMB/USD": {
+   "last": 189.35,
+   "unit_volume_24h": 130806.01719
+  },
+  "S/USD": {
+   "last": 0.02903,
+   "unit_volume_24h": 1098250.643628
+  },
+  "SEI/USD": {
+   "last": 0.04644,
+   "unit_volume_24h": 4032759.745694
+  },
+  "SHIB/USD": {
+   "last": 5.32e-06,
+   "unit_volume_24h": 5922346.04122309
+  },
+  "SKHYB/USD": {
+   "last": 185.7,
+   "unit_volume_24h": 1818408.76334
+  },
+  "SNDKB/USD": {
+   "last": 1634.44,
+   "unit_volume_24h": 15404992.477977
+  },
+  "SOL/USD": {
+   "last": 105.57,
+   "unit_volume_24h": 290856927.98967
+  },
+  "SOMI/USD": {
+   "last": 0.1782,
+   "unit_volume_24h": 798874.29976
+  },
+  "SPCXB/USD": {
+   "last": 155.54,
+   "unit_volume_24h": 12306752.8178
+  },
+  "STO/USD": {
+   "last": 0.0399,
+   "unit_volume_24h": 276909.1591
+  },
+  "SUI/USD": {
+   "last": 0.7748,
+   "unit_volume_24h": 53355830.55143
+  },
+  "TAO/USD": {
+   "last": 240.6,
+   "unit_volume_24h": 23010072.84051
+  },
+  "TRUMP/USD": {
+   "last": 2.028,
+   "unit_volume_24h": 15677667.936142
+  },
+  "TRX/USD": {
+   "last": 0.3361,
+   "unit_volume_24h": 19114889.67393
+  },
+  "TSLAB/USD": {
+   "last": 368.43,
+   "unit_volume_24h": 2458271.9142
+  },
+  "TUT/USD": {
+   "last": 0.02097,
+   "unit_volume_24h": 3497062.03192
+  },
+  "UNI/USD": {
+   "last": 8.465,
+   "unit_volume_24h": 161605345.42521
+  },
+  "VIRTUAL/USD": {
+   "last": 0.6364,
+   "unit_volume_24h": 4187508.1433
+  },
+  "WDCB/USD": {
+   "last": 428.69,
+   "unit_volume_24h": 159831.26982
+  },
+  "WIF/USD": {
+   "last": 0.1913,
+   "unit_volume_24h": 1956099.789174
+  },
+  "WLD/USD": {
+   "last": 0.4155,
+   "unit_volume_24h": 35793179.53786
+  },
+  "WLFI/USD": {
+   "last": 0.0583,
+   "unit_volume_24h": 4821467.21978
+  },
+  "XLM/USD": {
+   "last": 0.1871,
+   "unit_volume_24h": 13643068.229
+  },
+  "XPL/USD": {
+   "last": 0.08762,
+   "unit_volume_24h": 10079513.756155
+  },
+  "XRP/USD": {
+   "last": 1.3208,
+   "unit_volume_24h": 161973797.32718
+  },
+  "ZEC/USD": {
+   "last": 1502.84,
+   "unit_volume_24h": 650802489.41665
+  },
+  "ZEN/USD": {
+   "last": 7.201,
+   "unit_volume_24h": 8440394.72994
+  }
+ }
+}
